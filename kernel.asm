@@ -52,6 +52,8 @@ call waitForLcdReady
 ld hl, $A000
 ld (hl), %10000000
 
+call initializeVideo
+
 ;attempt to write contents of rtc to screen and do it over and over and over again
 getTime:
 

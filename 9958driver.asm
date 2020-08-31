@@ -7,39 +7,21 @@ initializeVideo:
 	ld a, 45
 	ld d, %00000000
 	call VdpWriteToStandardRegister
+
+	ld d, %00000001 	;idk what colors are anything so im just going to pick 2 random ones for background and text
+	ld a, 7
+	call VdpWriteToStandardRegister
 	
-	;setup text mode 1
-
-	;register 0
-	ld d, %00000000			;change to %00000100 for text2
-	ld a, 0
-	call VdpWriteToStandardRegister
-
-	;set up register 1
-	ld d, %01010000
-	ld a, 1
-	call VdpWriteToStandardRegister
-
-	;set up register 8
-	ld d, %00001000
-	ld a, 8
-	call VdpWriteToStandardRegister
-
-	;set up register 9
-	ld d, %00000001 	;dot clock in "input" mode. s1 and s0 "simultaneous mode" (Whatever that means) set to zero
-	ld a, 9
-	call VdpWriteToStandardRegister
-
 
 	;set up palette register with 4 colors
 	ld a, 0
-	ld d, %01110111		;purple
-	ld e, %00000000
+	ld d, %00000000		;green
+	ld e, %00000111
 	call VdpWriteToPaletteRegister
 
 	ld a, 1
 	ld d, %00000111
-	ld e, %00000111 	;blue/turquoise
+	ld e, %00000000 	;blue
 	call VdpWriteToPaletteRegister
 
 	ld a, 2
@@ -52,10 +34,30 @@ initializeVideo:
 	ld e, %00000000 	;black
 	call VdpWriteToPaletteRegister
 
-	;set up register 7 - the background and foreground color in TEXT1 and TEXT2 (the system should be in TEXT1 mode at this point if everything worked correctly)
+	;setup text mode 1
 
-	ld d, %00010000 	;idk what colors are anything so im just going to pick 2 random ones for background and text
+	ld d, %00110001 	;do it again just to make sure
 	ld a, 7
+	call VdpWriteToStandardRegister
+
+	;register 0
+	ld d, %00000100 		;change to %00000100 for text2. %00000000
+	ld a, 0
+	call VdpWriteToStandardRegister
+
+	;set up register 1
+	ld d, %01010000
+	ld a, 1
+	call VdpWriteToStandardRegister
+
+	;set up register 8
+	ld d, %00101000
+	ld a, 8
+	call VdpWriteToStandardRegister
+
+	;set up register 9
+	ld d, %00000000 	;dot clock in "output" mode. s1 and s0 "simultaneous mode" (Whatever that means) set to zero
+	ld a, 9
 	call VdpWriteToStandardRegister
 
 	;set up register 12 and configure cursor color in text 2 mode
@@ -127,7 +129,9 @@ VdpWriteToStandardRegister:
 	out (c), d
 
 	;write the register number next
-	out (c), a + 128
+	;add a, 128
+	or a, %10000000		;different way of adding 128 to a
+	out (c), a
 ret
 
 ; a register needs to contain palette register number you want to write to (0-15)
@@ -135,13 +139,13 @@ ret
 ; e register needs to contain second palette byte
 ;note that the pointer value in register 16 auto increments each time you do this
 VdpWriteToPaletteRegister:
-	push de
 	push af
+	push de
 		ld d, a
 		ld a, 16
 		call VdpWriteToStandardRegister
-	pop af
 	pop de
+	pop af
 
 	ld b, $A0
 	ld c, $22
@@ -171,6 +175,20 @@ VdpCharsIntoRam:
 	ld a, (hl)
 	
 	VdpCharsIntoRamLoopStart:
+		nop
+		nop
+		nop
+		nop
+		nop
+		nop
+		nop
+		nop
+		nop
+		nop
+		nop
+		nop
+		nop
+		nop
 		out (c), a
 		inc hl
 		ld a, (hl)
