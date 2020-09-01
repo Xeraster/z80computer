@@ -45,7 +45,7 @@ parseCliInput:
 	call areStringsEqual
 	ld a, 1
 	cp c
-	jr z, parseCliInputSetDate
+	jp z, parseCliInputSetDate
 
 	;check if the input is the test video command
 	ld hl, $2010
@@ -54,7 +54,7 @@ parseCliInput:
 	call areStringsEqual
 	ld a, 1
 	cp c
-	jr z, parseCliInputTestVideo
+	jp z, parseCliInputTestVideo
 
 	;check if the input is the vdp status register command
 	ld hl, $2010
@@ -91,6 +91,15 @@ parseCliInput:
 	ld a, 1
 	cp c
 	jr z, parseCliInputVprint
+
+	;check if the input is the testvram command
+	ld hl, $2010
+	ld de, testvramcmd
+	ld b, 8
+	call areStringsEqual
+	ld a, 1
+	cp c
+	jr z, parseCliInputTestVram
 
 	;check if the input is the get key
 	ld hl, $2010
@@ -135,6 +144,9 @@ parseCliInput:
 		jr parseCliInputExit
 	parseCliInputVprint:
 		call VdpPrintString
+		jr parseCliInputExit
+	parseCliInputTestVram:
+		call VdpTestVram
 		jr parseCliInputExit
 	parseCliInputInvalidCommand:
 		call invalidCommand
@@ -511,6 +523,53 @@ VdpPrintString:
 
 ret
 
+VdpTestVram:
+	ld a, %11000000
+	call lcdBlankLine	;clear second row of lcd to make room for the test results
+
+	ld a, 14
+	ld d, %00000000
+	call VdpWriteToStandardRegister
+	ld a, %00000010
+	out (c), a
+	ld a, %01000010
+	out (c), a
+
+	ld c, $20
+	ld a, %00000000
+	out (c), a
+	ld a, %11111111
+	out (c), a
+	ld a, $69
+	out (c), a
+	ld a, 69
+	out (c), a
+
+	ld a, 14
+	ld d, %00000000
+	call VdpWriteToStandardRegister
+	ld a, %00000010
+	out (c), a
+	ld a, %00000010
+	out (c), a
+
+	;start writing results of the vram reads to the screen. Let's see if this son of a bitch actually works or not
+	ld c, $20
+	in a,(c)
+	call aToScreenHex
+	in a,(c)
+	call aToScreenHex
+	in a,(c)
+	call aToScreenHex
+	in a,(c)
+	call aToScreenHex
+
+	ld hl, genericok
+	call printString
+	call backToPrevCursorPos
+
+ret
+
 time: db "time= ",0
 badcommand: db "invalid syntax",0
 printcmd: db "print ",0
@@ -524,5 +583,7 @@ vdpstatuscmd: db "vdpstatus ",0
 setvdpregcmd: db "setreg ",0
 loadfontscmd: db "loadfonts",0
 vprintcmd: db "vprint ",0
+testvramcmd: db "testvram",0
 genericok: db "OK",0
+genericfailed: db "failed",0
 fontLoaded: db "fonts loaded",0
