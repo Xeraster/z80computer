@@ -1,3 +1,4 @@
+;$9EFF
 ;the asm file for the command interpreter
 
 parseCliInput:
@@ -63,7 +64,7 @@ parseCliInput:
 	call areStringsEqual
 	ld a, 1
 	cp c
-	jr z, parseCliInputVdpStatus
+	jp z, parseCliInputVdpStatus
 
 	;check if the input is the vdp manual register set command
 	ld hl, $2010
@@ -72,7 +73,7 @@ parseCliInput:
 	call areStringsEqual
 	ld a, 1
 	cp c
-	jr z, parseCliInputvdpregset
+	jp z, parseCliInputvdpregset
 
 	;check if the input is the load fonts command
 	ld hl, $2010
@@ -100,6 +101,24 @@ parseCliInput:
 	ld a, 1
 	cp c
 	jr z, parseCliInputTestVram
+
+	;check if the input is the togglevmode command
+	ld hl, $2010
+	ld de, togglevmodecmd
+	ld b, 11
+	call areStringsEqual
+	ld a, 1
+	cp c
+	jr z, parseCliInputToggleVMode
+
+	;check if the input is the change color command
+	ld hl, $2010
+	ld de, changecolorcmd
+	ld b, 11
+	call areStringsEqual
+	ld a, 1
+	cp c
+	jr z, parseCliInputChangeColor
 
 	;check if the input is the get key
 	ld hl, $2010
@@ -147,6 +166,12 @@ parseCliInput:
 		jr parseCliInputExit
 	parseCliInputTestVram:
 		call VdpTestVram
+		jr parseCliInputExit
+	parseCliInputToggleVMode:
+		call togglevmode
+		jr parseCliInputExit
+	parseCliInputChangeColor:
+		call changeColor
 		jr parseCliInputExit
 	parseCliInputInvalidCommand:
 		call invalidCommand
@@ -532,7 +557,7 @@ VdpTestVram:
 	call VdpWriteToStandardRegister
 	ld a, %00000010
 	out (c), a
-	ld a, %01000010
+	ld a, %01010010
 	out (c), a
 
 	ld c, $20
@@ -550,7 +575,7 @@ VdpTestVram:
 	call VdpWriteToStandardRegister
 	ld a, %00000010
 	out (c), a
-	ld a, %00000010
+	ld a, %00010010
 	out (c), a
 
 	;start writing results of the vram reads to the screen. Let's see if this son of a bitch actually works or not
@@ -570,6 +595,92 @@ VdpTestVram:
 
 ret
 
+togglevmode:
+	;first, set cursor to second row of lcd in preparation to print the results
+	ld a, %11000000
+	call lcdBlankLine	;clear second row of lcd to make room for the test results
+
+	;0 = ntsc. 1 = pal
+	ld hl, $9EFD
+	ld a, (hl)
+	and a, %00000001
+	cp %00000001
+	jr z, togglevmodePal
+		;ntsc. switch to pal
+
+		;write 1 to area in ram to indicate pal
+		ld a, 1
+		ld (hl), a
+
+		ld a, 9
+		ld d, %00000010 	;change respective vdp register. bit 1 = 1 means pal
+		call VdpWriteToStandardRegister
+		
+		;put visual confirmation on lcd that video mode as been changed to correct format
+		ld hl, palmsg
+		call printString
+		jr togglevmodeExit
+	togglevmodePal:
+		;pal. switch to ntsc
+
+		;write 0 to area in ram to indicate ntsc
+		ld a, 0
+		ld (hl), a
+
+		ld a, 9
+		ld d, %00000000 	;change respective vdp register. bit 1 = 0 means ntsc
+		call VdpWriteToStandardRegister
+
+		;put visual confirmation on lcd that video mode as been changed to correct format
+		ld hl, ntscmsg
+		call printString
+		jr togglevmodeExit
+	togglevmodeExit:
+	call backToPrevCursorPos
+ret
+
+changeColor:
+
+	;blank the screen because this didn't work before I blanked it
+	ld d, %00000000
+	ld a, 1
+	call VdpWriteToStandardRegister
+
+	ld hl, $9EFC
+	ld a, (hl)
+	and a, %00000001
+	cp %00000001
+	jr z, makeColorRed
+		ld a, 1
+		ld hl, $9EFC
+		ld (hl), a
+		ld a, 0
+		ld d, %01110000
+		ld e, %00000000
+		jr changeColorContinue
+
+	makeColorRed:
+		ld a, 0
+		ld hl, $9EFC
+		ld (hl), a
+		ld a, 0
+		ld d, %00000111
+		ld e, %00000000
+	changeColorContinue:
+	call VdpWriteToPaletteRegister
+
+	;put the screen back to the way it was before
+	ld d, %01010000
+	ld a, 1
+	call VdpWriteToStandardRegister
+
+	ld a, %11000000
+	call lcdBlankLine	;clear second row of lcd to make room for the test results
+	ld hl, genericok
+	call printString
+	call backToPrevCursorPos
+ret
+
 time: db "time= ",0
 badcommand: db "invalid syntax",0
 printcmd: db "print ",0
@@ -584,6 +695,10 @@ setvdpregcmd: db "setreg ",0
 loadfontscmd: db "loadfonts",0
 vprintcmd: db "vprint ",0
 testvramcmd: db "testvram",0
+togglevmodecmd: db "togglevmode",0
+changecolorcmd: db "changecolor",0
 genericok: db "OK",0
+ntscmsg: db "video mode is ntsc",0
+palmsg: db "video mode is pal",0
 genericfailed: db "failed",0
 fontLoaded: db "fonts loaded",0

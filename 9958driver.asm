@@ -3,42 +3,30 @@
 ;port #2 Palette registers (W)	$A022
 ;port #3 Register indirect addressing (W)
 initializeVideo:
-
-	ld a, 45
-	ld d, %00000000
-	call VdpWriteToStandardRegister
-
-	ld d, %00000001 	;idk what colors are anything so im just going to pick 2 random ones for background and text
-	ld a, 7
-	call VdpWriteToStandardRegister
-	
+	call VdpCharsIntoRam
 
 	;set up palette register with 4 colors
-	ld a, 0
-	ld d, %00000000		;green
-	ld e, %00000111
-	call VdpWriteToPaletteRegister
+	;ld a, 0
+	;ld d, %00000000		;green
+	;ld e, %00000111
+	;call VdpWriteToPaletteRegister
 
-	ld a, 1
-	ld d, %00000111
-	ld e, %00000000 	;blue
-	call VdpWriteToPaletteRegister
+	;ld a, 1
+	;ld d, %00000111
+	;ld e, %00000000 	;blue
+	;call VdpWriteToPaletteRegister
 
-	ld a, 2
-	ld d, %01110111
-	ld e, %00000111 	;white
-	call VdpWriteToPaletteRegister
+	;ld a, 2
+	;ld d, %01110111
+	;ld e, %00000111 	;white
+	;call VdpWriteToPaletteRegister
 
-	ld a, 3
-	ld d, %00000000
-	ld e, %00000000 	;black
-	call VdpWriteToPaletteRegister
+	;ld a, 3
+	;ld d, %00000000
+	;ld e, %00000000 	;black
+	;call VdpWriteToPaletteRegister
 
 	;setup text mode 1
-
-	ld d, %00110001 	;do it again just to make sure
-	ld a, 7
-	call VdpWriteToStandardRegister
 
 	;register 0
 	ld d, %00000100 		;change to %00000100 for text2. %00000000
@@ -51,13 +39,17 @@ initializeVideo:
 	call VdpWriteToStandardRegister
 
 	;set up register 8
-	ld d, %00101000
-	ld a, 8
-	call VdpWriteToStandardRegister
+	;ld d, %00101000
+	;ld a, 8
+	;call VdpWriteToStandardRegister
 
 	;set up register 9
-	ld d, %00000000 	;dot clock in "output" mode. s1 and s0 "simultaneous mode" (Whatever that means) set to zero
-	ld a, 9
+	;ld d, %00000000 	;dot clock in "output" mode. s1 and s0 "simultaneous mode" (Whatever that means) set to zero
+	;ld a, 9
+	;call VdpWriteToStandardRegister
+
+	ld d, %11110000 	;do it again just to make sure
+	ld a, 7
 	call VdpWriteToStandardRegister
 
 	;set up register 12 and configure cursor color in text 2 mode
@@ -73,7 +65,7 @@ initializeVideo:
 	;set values of pattern generator, pattern layout and pattern color table
 	;I am using "MSX system default" values
 	;text 2 pattern generator: 01000h-017FFh. Pattern layout: 00000h-0077Fh (00000h-0086Fh in 26.5 line mode). Pattern color table 800h-8EFh (800h-90Dh in 26.5 mode)
-	ld d, %00000011
+	ld d, %00000000
 	ld a, 2
 	call VdpWriteToStandardRegister
 
@@ -81,7 +73,7 @@ initializeVideo:
 	ld a, 4
 	call VdpWriteToStandardRegister
 
-	ld d, %00100111
+	ld d, %00100000
 	ld a, 3
 	call VdpWriteToStandardRegister
 
@@ -89,6 +81,8 @@ initializeVideo:
 	ld a, 10
 	call VdpWriteToStandardRegister
 
+	;do this after loading registers in case its needed or something
+	call writeRegisterOne
 
 	;put a visual confirmation on the lcd that this function finished
 	ld a, %11000000 					;the lcd's address for the 2nd line
@@ -194,6 +188,20 @@ VdpCharsIntoRam:
 		ld a, (hl)
 		cp %11111111
 		jr nz, VdpCharsIntoRamLoopStart
+
+	call writeRegisterOne
+
+ret
+
+;because a guy on a forum said setting bit 6 of register 1 for screen on after any register command might work
+writeRegisterOne:
+
+	ld b, $A0
+	ld c, $21
+	;set up register 1
+	ld d, %01010000
+	ld a, 1
+	call VdpWriteToStandardRegister
 
 ret
 

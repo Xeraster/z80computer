@@ -11,6 +11,8 @@
 ;	$2009: keyboard input character counter variable
 ;	$2010: character buffer map
 ;	$9EFF: caps lock true/false
+;	$9EFD: is vdp in ntsc or pal mode (1 = pal. 0 = ntsc)
+; 	$9EFC: variable im using so debug video changes color
 di
 ld sp, $9FFF		;set the stack pointer to the top of the ram
 
