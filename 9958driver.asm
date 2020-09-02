@@ -124,7 +124,7 @@ VdpWriteToStandardRegister:
 
 	;write the register number next
 	;add a, 128
-	or a, %10000000		;different way of adding 128 to a
+	or %10000000		;different way of adding 128 to a
 	out (c), a
 ret
 
@@ -157,7 +157,7 @@ VdpCharsIntoRam:
 	;pro-gamer move: since register b and c got set in the prev function, i'm not setting them again
 	ld a, %00000000 	;bits a0-a7
 	out (c), a
-	ld a, %01010000 	;bits a8-a13. bit 6 is r/w. bit 7 should stay zero
+	ld a, %00010000 	;bits a8-a13. bit 6 is r/w. bit 7 should stay zero
 	out (c), a
 
 	;now, time to make a bigass loop
