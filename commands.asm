@@ -82,16 +82,16 @@ parseCliInput:
 	call areStringsEqual
 	ld a, 1
 	cp c
-	jr z, parseCliInputLoadFonts
+	jp z, parseCliInputLoadFonts
 
-	;check if the input is the vprint command
+	;check if the input is the clear command
 	ld hl, $2010
-	ld de, vprintcmd
-	ld b, 7
+	ld de, clearscreencmd
+	ld b, 5
 	call areStringsEqual
 	ld a, 1
 	cp c
-	jr z, parseCliInputVprint
+	jp z, parseCliInputClearScreen
 
 	;check if the input is the testvram command
 	ld hl, $2010
@@ -119,6 +119,15 @@ parseCliInput:
 	ld a, 1
 	cp c
 	jr z, parseCliInputChangeColor
+
+	;check if the input is the help command
+	ld hl, $2010
+	ld de, helpcmd
+	ld b, 4
+	call areStringsEqual
+	ld a, 1
+	cp c
+	jr z, parseCliInputHelp
 
 	;check if the input is the get key
 	ld hl, $2010
@@ -161,8 +170,8 @@ parseCliInput:
 	parseCliInputLoadFonts:
 		call VdpLoadFonts
 		jr parseCliInputExit
-	parseCliInputVprint:
-		call VdpPrintString
+	parseCliInputClearScreen:
+		call ClearScreen
 		jr parseCliInputExit
 	parseCliInputTestVram:
 		call VdpTestVram
@@ -173,69 +182,82 @@ parseCliInput:
 	parseCliInputChangeColor:
 		call changeColor
 		jr parseCliInputExit
+	parseCliInputHelp:
+		call helpCommand
+		jr parseCliInputExit
 	parseCliInputInvalidCommand:
 		call invalidCommand
 	parseCliInputExit:
+		call VdpInsertEnter
+		call clearCommandBuffer 		;reset command buffer so you dont have to press backspace a bunch after entering a command
 ret
 
 printTime:
-	ld a, %11000000 					;the lcd's address for the 2nd line
-	call lcdBlankLine 					;print a blank line on the 2nd line on the lcd to discard any data from the previous command
+	call VdpInsertEnter
+	;ld a, %11000000 					;the lcd's address for the 2nd line
+	;call lcdBlankLine 					;print a blank line on the 2nd line on the lcd to discard any data from the previous command
 
 	ld hl, time
-	call printString
+	;call printString
+	call VPrintString
 
 	;hours
 	ld hl, $A014
 	ld a, (hl)
 	call aToScreenHex
 	ld a, ":"
-	call printChar 
+	;call printChar 
+	call VdpPrintChar
 
 	;minutes
 	ld hl, $A012
 	ld a, (hl)
 	call aToScreenHex
 	ld a, ":"
-	call printChar
+	;call printChar
+	call VdpPrintChar
 
 	;seconds
 	ld hl, $A010
 	ld a, (hl)
 	call aToScreenHex
 
-	call backToPrevCursorPos
+	;call backToPrevCursorPos
 
 ret
 
 printDate:
-	ld a, %11000000 					;the lcd's address for the 2nd line
-	call lcdBlankLine 					;print a blank line on the 2nd line on the lcd to discard any data from the previous command
+	;ld a, %11000000 					;the lcd's address for the 2nd line
+	;call lcdBlankLine 					;print a blank line on the 2nd line on the lcd to discard any data from the previous command
+	call VdpInsertEnter
 
 	;months
 	ld hl, $A019
 	ld a, (hl)
 	call aToScreenHex
 	ld a, "/"
-	call printChar
+	;call printChar
+	call VdpPrintChar
 
 	;days
 	ld hl, $A016
 	ld a, (hl)
 	call aToScreenHex
 	ld a, "/"
-	call printChar
+	;call printChar
+	call VdpPrintChar
 
 	;years
 	ld hl, $A01A
 	ld a, (hl)
 	call aToScreenHex
 
-	call backToPrevCursorPos
+	;call backToPrevCursorPos
 ret
 
 setTime:
 	;inhibit updating to allow time to be set
+	call VdpInsertEnter
 	ld hl, $A01E
 	ld a, %00001110
 	ld (hl), a
@@ -293,15 +315,17 @@ setTime:
 	ld a, %00000110
 	ld (hl), a
 
-	ld a, %11000000 					;the lcd's address for the 2nd line
-	call lcdBlankLine 					;print a blank line on the 2nd line on the lcd to discard any data from the previous command
+	;ld a, %11000000 					;the lcd's address for the 2nd line
+	;call lcdBlankLine 					;print a blank line on the 2nd line on the lcd to discard any data from the previous command
 	ld hl, genericok
-	call printString
-	call backToPrevCursorPos
+	;call printString
+	call VPrintString
+	;call backToPrevCursorPos
 
 ret
 
 setDate:
+	call VdpInsertEnter
 	;inhibit updating to allow time to be set
 	ld hl, $A01E
 	ld a, %00001110
@@ -360,18 +384,20 @@ setDate:
 	ld a, %00000110
 	ld (hl), a
 
-	ld a, %11000000 					;the lcd's address for the 2nd line
-	call lcdBlankLine 					;print a blank line on the 2nd line on the lcd to discard any data from the previous command
+	;ld a, %11000000 					;the lcd's address for the 2nd line
+	;call lcdBlankLine 					;print a blank line on the 2nd line on the lcd to discard any data from the previous command
 	ld hl, genericok
-	call printString
-	call backToPrevCursorPos
+	;call printString
+	call VPrintString
+	;call backToPrevCursorPos
 
 ret
 
 ;display next pressed key to the screen
 getKeyCommand:
-	ld a, %11000000
-	call lcdBlankLine
+	call VdpInsertEnter
+	;ld a, %11000000
+	;call lcdBlankLine
 
 	printAnotherKey_getKeyCommand:
 	call waitChar
@@ -383,32 +409,34 @@ getKeyCommand:
 	cp $2A
 	jr nz, printAnotherKey_getKeyCommand
 
-	call backToPrevCursorPos
+	;call backToPrevCursorPos
 
 ret
 
 printTextCommand:
-	ld a, %11000000 					;the lcd's address for the 2nd line
-	call lcdBlankLine 					;print a blank line on the 2nd line on the lcd to discard any data from the previous command
+	call VdpInsertEnter
+	;;ld a, %11000000 					;the lcd's address for the 2nd line
+	;;call lcdBlankLine 					;print a blank line on the 2nd line on the lcd to discard any data from the previous command
 	;call waitForLcdReady
 	;ld hl, $A000
 	;ld (hl), %11000000 			;the text is going to be printed on the second line of the lcd
 	ld hl, $2016	 			;print whatever's in the saved command variable as a string, discarding the first 6 characters since they are part of the command
-	call printString
-
-	call backToPrevCursorPos
+	;call printString
+	call VPrintString
+	;call backToPrevCursorPos
 ret
 
 invalidCommand:
-	ld a, %11000000 					;the lcd's address for the 2nd line
-	call lcdBlankLine 					;print a blank line on the 2nd line on the lcd to discard any data from the previous command
+	call VdpInsertEnter
+	;ld a, %11000000 					;the lcd's address for the 2nd line
+	;call lcdBlankLine 					;print a blank line on the 2nd line on the lcd to discard any data from the previous command
 	;call waitForLcdReady
 	;ld hl, $A000
 	;ld (hl), %11000000 			;the text is going to be printed on the second line of the lcd
 	ld hl, badcommand	 			;print whatever's in the saved command variable as a string to see just how accurate that thing actually is
-	call printString
-
-	call backToPrevCursorPos
+	;call printString
+	call VPrintString
+	;call backToPrevCursorPos
 ret
 
 ;put the cursor back to whereever it was before typing in the command (not the best thing to do but I will change it later after I get a few other things working)
@@ -521,30 +549,29 @@ VdpLoadFonts:
 	call backToPrevCursorPos
 ret
 
-VdpPrintString:
+;TO-DO: Fix the bug where it puts the cursor on row 1 and not row zero
+ClearScreen:
+	
+	;set column and row counters to zero
+	ld a, 0
+	ld hl, $9EFA
+	ld (hl), a
+	inc hl
+	ld (hl), a
 
-	ld a, 14
-	ld d, %00000000
-	call VdpWriteToStandardRegister
-	ld a, %00000100
-	out (c), a
-	ld a, %00000000
-	out (c), a
+	ld hl, $2009
+	ld (hl), a
 
-	ld b, $A0
-	ld c, $20
-	ld a, 47
-	VdpPrintStringLoop1Start:
-		out (c), a
-		inc a
-		cp 91
-		jr nz, VdpPrintStringLoop1Start
+	;fill the 40 character keyboard input store-er with null characters
+	inc hl
+	ld c, 80
+	call clearRangeInRam
 
-	ld a, %11000000
-	call lcdBlankLine
-	ld hl, genericok
-	call printString
-	call backToPrevCursorPos
+	;only thing left is to clear the screen in vram
+	call eraseScreen
+	;now run this so the vram addres pointer will be at top of screen area and ready to be used some more
+	call RowsColumnsToVram
+
 
 ret
 
@@ -681,6 +708,46 @@ changeColor:
 	call backToPrevCursorPos
 ret
 
+helpCommand:
+
+	call VdpInsertEnter
+	ld hl, availableCommands
+	call VPrintString
+
+	call VdpInsertEnter
+	ld hl, clearscreencmd
+	call VPrintString
+
+	call VdpInsertEnter
+	ld hl, printdatecmd
+	call VPrintString
+
+	call VdpInsertEnter
+	ld hl, helpcmd
+	call VPrintString
+	
+	call VdpInsertEnter
+	ld hl, printcmd
+	call VPrintString
+
+	call VdpInsertEnter
+	ld hl, setdatecmd
+	call VPrintString
+	ld hl, dateformat
+	call VPrintString
+
+	call VdpInsertEnter
+	ld hl, settimecmd
+	call VPrintString
+	ld hl, timeformat
+	call VPrintString
+
+	call VdpInsertEnter
+	ld hl, printtimecmd
+	call VPrintString
+
+ret
+
 time: db "time= ",0
 badcommand: db "invalid syntax",0
 printcmd: db "print ",0
@@ -693,12 +760,16 @@ testvideocmd: db "testvideo",0
 vdpstatuscmd: db "vdpstatus ",0
 setvdpregcmd: db "setreg ",0
 loadfontscmd: db "loadfonts",0
-vprintcmd: db "vprint ",0
+clearscreencmd: db "clear",0
 testvramcmd: db "testvram",0
+helpcmd: db "help",0
 togglevmodecmd: db "togglevmode",0
 changecolorcmd: db "changecolor",0
 genericok: db "OK",0
 ntscmsg: db "video mode is ntsc",0
 palmsg: db "video mode is pal",0
 genericfailed: db "failed",0
+timeformat: db " [hhmmss]",0
+dateformat: db " [MMDDYY]",0
+availableCommands: db "Available commands:",0
 fontLoaded: db "fonts loaded",0

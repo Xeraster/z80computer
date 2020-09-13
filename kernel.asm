@@ -9,18 +9,24 @@
 ;Notable variable locations:
 ;	$2005: the last scancode that came from the keyboard
 ;	$2009: keyboard input character counter variable
-;	$2010: character buffer map
+;	$2010: character buffer map (currently 40 chars)
 ;	$9EFF: caps lock true/false
 ;	$9EFD: is vdp in ntsc or pal mode (1 = pal. 0 = ntsc)
 ; 	$9EFC: variable im using so debug video changes color
+;	$9EFB: vdp textmode line(row) number
+;	$9EFA: vdp testmode column number
 di
 ld sp, $9FFF		;set the stack pointer to the top of the ram
-
-;fill the 20 character keyboard input store-er with null characters
-ld hl, $2010
-ld c, 20
+ld hl, $9EFA
 ld a, 0
-call fillRangeInRam
+ld (hl), a
+inc hl
+ld (hl), a
+
+;fill the 40 character keyboard input store-er with null characters
+ld hl, $2010
+ld c, 80
+call clearRangeInRam
 
 ;set lcd to 8 bit 2 line mode
 call waitForLcdReady
@@ -55,6 +61,9 @@ ld hl, $A000
 ld (hl), %10000000
 
 call initializeVideo
+ld hl, welcomemsg
+call VPrintString
+call VdpInsertEnter
 
 ;attempt to write contents of rtc to screen and do it over and over and over again
 getTime:
@@ -125,7 +134,12 @@ ld (hl), c
 jr continueAndShowTypedInput
 
 continueAndShowTypedInput:
-call printChar
+push af
+call printChar 				;while currently useless, print whatever gets typed onto the screen before doing it on the lcd
+pop af
+call VdpPrintChar
+call RowsColumnsToCursorPos 	;update the cursor position
+call RowsColumnsToVram 			;and then do this to allow the next character to get written to the correct place
 dontActuallyDoAnything:
 
 ;call waitForLcdReady
@@ -246,14 +260,16 @@ aToScreenHex:
 	rrc a
 	rrc a
 	call aToHex
-	call printChar
+	;call printChar
+	call VdpPrintChar
 	pop af
 	res 7, a
 	res 6, a
 	res 5, a
 	res 4, a
 	call aToHex
-	call printChar
+	;call printChar
+	call VdpPrintChar
 ret
 
 ;this function displays whatever is in the a register to the screen in binary form
@@ -454,17 +470,18 @@ ret
 ;post conditions: the range in memory has been set to zero
 ;this doesnt work. I need to fix it
 clearRangeInRam:
-	ld d, 0
+	;there hopefully now it's simple enough to not mess up
+	;ld d, 0
 	ld e, 0
 	clearrangeramcont:
-		ld (hl), 0
+		ld (hl), e
 		inc hl
-		inc e
+		dec c
 		push af
-		ld a, e
-		cp c
+		ld a, c
+		cp 0
 		pop af
-		jr c, clearrangeramcont
+		jr nz, clearrangeramcont
 ret
 
 ;preconditions: hl contains start address to clear. c contains number of bytes to clear. a contains the value you want to fill in the address range
@@ -557,6 +574,8 @@ initializeKeyboard:
 	call kbd8042WaitReadReady
 	ld hl, $A004
 	ld a, (hl)						;read the results of the self test. if it prints to the screen as "55", it worked correctly
+	ld hl, kbdtype
+	call VPrintString
 	call aToScreenHex
 
 	;perform a ps/2 device test
@@ -581,6 +600,9 @@ initializeKeyboard:
 	ld hl, $A004
 	ld a, (hl)
 	call aToScreenHex
+
+	;since the screen hex status prints to the screen now, make a new line now that this part is finished
+	call VdpInsertEnter
 ret
 
 ;this function waits for the user to input a key. Once a keyboard key has been pressed, it loads the a register with the respective ascii code
@@ -628,7 +650,8 @@ checkIfNonChar:
 	jr nz, checkIfNonCharCaps
 	;ld e, 1 						;set e so the cli will know the ascii code in register a is a "nonchar" and won't display it
 	push af
-	call lcdBackspace
+	;call lcdBackspace
+	call VdpBackspace
 	pop af
 	jr checkIfNonCharExit
 
@@ -744,6 +767,64 @@ setCurrentCommandSpaceToNull:
 
 ret
 
+;==these math functions are from z80-heaven==
+
+DE_Times_A:
+;Inputs:
+;     DE and A are factors
+;Outputs:
+;     A is not changed
+;     B is 0
+;     C is not changed
+;     DE is not changed
+;     HL is the product
+;Time:
+;     342+6x
+;
+     ld b,8          ;7           7
+     ld hl,0         ;10         10
+       add hl,hl     ;11*8       88
+       rlca          ;4*8        32
+       jr nc,$+3     ;(12|18)*8  96+6x
+         add hl,de   ;--         --
+       djnz $-5      ;13*7+8     99
+
+ret
+
+CDivD:
+;Inputs:
+;     C is the numerator
+;     D is the denominator
+;Outputs:
+;     A is the remainder
+;     B is 0
+;     C is the result of C/D
+;     D,E,H,L are not changed
+;
+     ld b,8
+     xor a
+       sla c
+       rla
+       cp d
+       jr c,$+4
+         inc c
+         sub d
+       djnz $-8
+ret
+
+clearCommandBuffer:
+
+	ld hl, $2009  	;clear the command character counter (set it to zero)
+	ld a, 0
+	ld (hl), a
+
+	;fill the 40 character keyboard input store-er with null characters
+	ld hl, $2010
+	ld c, 80
+	call clearRangeInRam
+
+ret
+
 include '9958driver.asm'
 include 'commands.asm'
 
@@ -752,9 +833,10 @@ longMessage: db "This message is longer than 1 line",0
 message: db "What hath God wrought",0
 ready: db "ready",0
 controlPort: db "ctrl port= ",0
-kbdtype: db "kbtype:",0
+kbdtype: db "kbstatus:",0
+welcomemsg: db "System ready",0
 
 ;here is my scancode to ascii table.
 ;I know, I know, someone call an exorcist
-keyboardMapShift: db "Q!$$$ZSAW@$$CXDE$#$$ VFTR%$$NBHGY^$$$MJU&*$$,KIO)($$>?L:P_$$$",$27,"${+$$",$1A,"$",$0A,"}$$$$$$$$$$",$08,"$$1$47$$$0.2568**$+3-*9",0
-keyboardMapNoShift: db "q1$$$zsaw2$$cxde43$$ vftr5$$nbhgy6$$$mju78$$,kio09$$./l;p-$$$",$27,"$[=$$",$1A,"$",$0A,"]$$$$$$$$$$",$08,"$$1$47$$$0.2568**$+3-*9",0
+keyboardMapShift: db "Q!$$$ZSAW@$$CXDE$#$$ VFTR%$$NBHGY^$$$MJU&*$$<KIO)($$>?L:P_$$$",$22,"${+$$",$1A,"$",$0A,"}$",$7C,"$$$$$$$$",$08,"$$1$47$$$0.2568**$+3-*9",0
+keyboardMapNoShift: db "q1$$$zsaw2$$cxde43$$ vftr5$$nbhgy6$$$mju78$$,kio09$$./l;p-$$$",$27,"$[=$$",$1A,"$",$0A,"]$",$5C,"$$$$$$$$",$08,"$$1$47$$$0.2568**$+3-*9",0
