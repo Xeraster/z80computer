@@ -204,6 +204,7 @@ VdpCharsIntoRam:
 ret
 
 ;copy whatever's in register a to next address in vram
+;changed registers: a, b, c and hl
 VdpPrintChar:
 
 	ld b, $A0
@@ -325,6 +326,37 @@ VdpBackspace:
 	call RowsColumnsToVram
 
 	VdpBackspaceExit:
+
+ret
+
+VdpInsertTab:
+
+	;insert code here
+	ld hl, $9EFA 	;get the horizontal cursor pos
+	ld c, (hl)
+	ld d, 8
+
+	;divide number of columns by 8 to obtain the remainder
+	call CDivD
+	ld b, a
+	ld a, 8
+
+	;do 8-remainder. this gets the number of spaces that need to be inserted in order to perform a correct tab operation
+	sub b
+
+	ld d, a
+	VdpInsertTabSpaceLoop:
+		ld a, " "
+		call VdpPrintChar
+		dec d
+		ld a, d
+		cp 0
+		jr nz, VdpInsertTabSpaceLoop
+
+	call RowsColumnsToCursorPos
+	call RowsColumnsToVram
+	;there that should be it
+
 
 ret
 
@@ -626,7 +658,7 @@ letters_backwardsslash: db %10000000, %01000000, %00100000, %00100000, %00010000
 letters_halfsquare2: db %11100000, %00100000, %00100000, %00100000, %00100000, %00100000, %11100000, %00000000
 letters_idk2: db %00100000, %01010000, %10001000, %00000000, %00000000, %00000000, %00000000, %00000000
 letters_idk3: db %00000000, %00000000, %00000000, %00000000, %00000000, %00000000, %11111000, %00000000
-letters_idk6: db %00000000, %00000000, %00000000, %00000000, %00000000, %00000000, %11111000, %00000000
+letters_alttilde: db %01000000, %00100000, %00010000, %00000000, %00000000, %00000000, %00000000, %00000000
 letters_a: db %00000000, %00000000, %01100000, %00010000, %11110000, %10010000, %01111000, %00000000
 letters_b: db %10000000, %10000000, %10000000, %11110000, %10001000, %10001000, %11110000, %00000000
 letters_c: db %00000000, %00000000, %01110000, %10000000, %10000000, %10000000, %01110000, %00000000
@@ -656,6 +688,7 @@ letters_z: db %00000000, %00000000, %11111000, %00001000, %01110000, %10000000, 
 letters_idk4: db %00110000, %01000000, %01000000, %11000000, %01000000, %01000000, %00110000, %00000000
 letters_pipeiguess: db %00100000, %00100000, %00100000, %00100000, %00100000, %00100000, %00100000, %00000000
 letters_idk5: db %11000000, %00100000, %00100000, %00110000, %00100000, %00100000, %11000000, %00000000
+letters_tilde: db %00000000, %01001000, %10110000, %00000000, %00000000, %00000000, %00000000, %00000000
 letters_errorchar: db %10101000, %01010100, %10101000, %01010100, %10101000, %01010100, %10101000, %00000000
 letters_end: db %11111111	;the termination char - makes ending the vram loading loop take much less code. Just keep in mind that no font sprite can have a straight line across or it will end the loop early resulting in not all the character fonts getting loaded
 

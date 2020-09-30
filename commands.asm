@@ -100,7 +100,7 @@ parseCliInput:
 	call areStringsEqual
 	ld a, 1
 	cp c
-	jr z, parseCliInputTestVram
+	jp z, parseCliInputTestVram
 
 	;check if the input is the togglevmode command
 	ld hl, $2010
@@ -109,7 +109,7 @@ parseCliInput:
 	call areStringsEqual
 	ld a, 1
 	cp c
-	jr z, parseCliInputToggleVMode
+	jp z, parseCliInputToggleVMode
 
 	;check if the input is the change color command
 	ld hl, $2010
@@ -118,7 +118,115 @@ parseCliInput:
 	call areStringsEqual
 	ld a, 1
 	cp c
-	jr z, parseCliInputChangeColor
+	jp z, parseCliInputChangeColor
+
+	;check if the input is the drive status command
+	ld hl, $2010
+	ld de, driveStatuscmd
+	ld b, 11
+	call areStringsEqual
+	ld a, 1
+	cp c
+	jp z, parseCliInputDriveStatus
+
+	;check if the input is the drive error command
+	ld hl, $2010
+	ld de, driveerrorcmd
+	ld b, 10
+	call areStringsEqual
+	ld a, 1
+	cp c
+	jp z, parseCliInputDriveError
+
+	;check if the input is the cftest command
+	ld hl, $2010
+	ld de, cftestcmd
+	ld b, 6
+	call areStringsEqual
+	ld a, 1
+	cp c
+	jp z, parseCliInputCFTest
+
+	;check if the input is the read command
+	ld hl, $2010
+	ld de, readmemorycmd
+	ld b, 5
+	call areStringsEqual
+	ld a, 1
+	cp c
+	jp z, parseCliInputReadMemory
+
+	;check if the input is the iowr command
+	ld hl, $2010
+	ld de, iowrcmd
+	ld b, 5
+	call areStringsEqual
+	ld a, 1
+	cp c
+	jp z, parseCliInputIOWRITE
+
+	;check if the input is the iord command
+	ld hl, $2010
+	ld de, iordcmd
+	ld b, 5
+	call areStringsEqual
+	ld a, 1
+	cp c
+	jp z, parseCliInputIOREAD
+
+	;check if the input is the mmwr command
+	ld hl, $2010
+	ld de, memwrcmd
+	ld b, 5
+	call areStringsEqual
+	ld a, 1
+	cp c
+	jp z, parseCliInputMEMWRITE
+
+	;check if the input is the mmrd command
+	ld hl, $2010
+	ld de, memrdcmd
+	ld b, 5
+	call areStringsEqual
+	ld a, 1
+	cp c
+	jp z, parseCliInputMEMREAD
+
+	;check if the input is the fsinfo command
+	ld hl, $2010
+	ld de, fsinfocmd
+	ld b, 6
+	call areStringsEqual
+	ld a, 1
+	cp c
+	jp z, parseCliInputFsInfo
+
+	;check if the input is the fsinfo command
+	ld hl, $2010
+	ld de, testaddcmd
+	ld b, 7
+	call areStringsEqual
+	ld a, 1
+	cp c
+	jp z, parseCliInputTestAdd
+
+	;check if the input is the ls command
+	ld hl, $2010
+	ld de, lscmd
+	ld b, 2
+	call areStringsEqual
+	ld a, 1
+	cp c
+	jp z, parseCliInputPrintDirectory
+
+	;check if the input is the dir command
+	ld hl, $2010
+	ld de, dircmd
+	ld b, 3
+	call areStringsEqual
+	ld a, 1
+	cp c
+	jp z, parseCliInputPrintDirectory
 
 	;check if the input is the help command
 	ld hl, $2010
@@ -127,7 +235,7 @@ parseCliInput:
 	call areStringsEqual
 	ld a, 1
 	cp c
-	jr z, parseCliInputHelp
+	jp z, parseCliInputHelp
 
 	;check if the input is the get key
 	ld hl, $2010
@@ -138,11 +246,11 @@ parseCliInput:
 	cp c
 	jr z, parseCliInputGetKey
 
-	jr parseCliInputInvalidCommand
+	jp parseCliInputInvalidCommand
 
 	parseCliInputPrintString:
 		call printTextCommand
-		jr parseCliInputExit
+		jp parseCliInputExit
 	parseCliInputShowTime:
 		call printTime
 		jr parseCliInputExit
@@ -181,6 +289,39 @@ parseCliInput:
 		jr parseCliInputExit
 	parseCliInputChangeColor:
 		call changeColor
+		jr parseCliInputExit
+	parseCliInputDriveStatus:
+		call getCFStatusCommand
+		jr parseCliInputExit
+	parseCliInputDriveError:
+		call getCFErrorCommand
+		jr parseCliInputExit
+	parseCliInputCFTest:
+		call CFTestCommand
+		jr parseCliInputExit
+	parseCliInputReadMemory:
+		call readAndDisplayMemory
+		jr parseCliInputExit
+	parseCliInputIOREAD:
+		call manualioread
+		jr parseCliInputExit
+	parseCliInputIOWRITE:
+		call manualiowrite
+		jr parseCliInputExit
+	parseCliInputMEMREAD:
+		call manualmemread
+		jr parseCliInputExit
+	parseCliInputMEMWRITE:
+		call manualmemwrite
+		jr parseCliInputExit
+	parseCliInputFsInfo:
+		call fsInfoTestCommand
+		jr parseCliInputExit
+	parseCliInputTestAdd:
+		call test32bitAdd
+		jr parseCliInputExit
+	parseCliInputPrintDirectory:
+		call printCurrentDirectory
 		jr parseCliInputExit
 	parseCliInputHelp:
 		call helpCommand
@@ -708,10 +849,202 @@ changeColor:
 	call backToPrevCursorPos
 ret
 
+getCFStatusCommand:
+	call VdpInsertEnter
+
+	ld hl, cfstatusequals
+	call VPrintString
+	call getCFStatus
+	call aToScreenHex
+
+ret
+
+getCFErrorCommand:
+
+	call VdpInsertEnter
+
+	ld hl, cferrorequals
+	call VPrintString
+	ld b, $A0
+	ld c, $31
+	in a, (c)
+	call aToScreenHex
+
+ret
+
+CFTestCommand:
+
+	call readCFSector
+	;ld d, $FF
+	;ld hl, $3000
+	;call displayMemoryToScreen
+
+	call VdpInsertEnter
+	ld hl, genericok
+	call VPrintString
+
+ret
+
+readAndDisplayMemory:
+	call VdpInsertEnter
+
+	;get the address that the user typed
+	ld hl, $2015
+	ld a, (hl)
+	inc hl
+	ld b, (hl)
+	call asciiToHex
+
+	ld d, a
+
+	inc hl
+	ld a, (hl)
+	inc hl
+	ld b, (hl)
+	call asciiToHex
+	ld e, a
+
+	;replace hl register with contents of de
+	ex de, hl
+
+	call displayMemoryToScreenPretty
+
+ret
+
+displayMemoryToScreenPretty:
+
+	ld d, $FF
+	displayRamDriveTestLoopPrettyNewLine:
+	push de
+	push hl
+		push hl
+			call VdpInsertEnter
+		pop hl
+		ld a, h
+		push hl
+		call aToScreenHex
+		pop hl
+		ld a, l
+		call aToScreenHex
+		ld a, ':'
+		call VdpPrintChar
+	pop hl
+	pop de
+	ld e, 20
+	displayRamDriveTestLoopPretty:
+		ld a, (hl)
+		push hl
+			push af
+				ld a, ' '
+				push de
+				call VdpPrintChar
+				pop de
+			pop af
+			call aToScreenHex
+		pop hl
+		inc hl
+		dec d
+		dec e
+		ld a, e
+		cp 0
+		jr z, displayRamDriveTestLoopPrettyNewLine
+		ld a, d
+		cp 0
+		jr nz, displayRamDriveTestLoopPretty
+
+ret
+
+parseMemoryCommandVariables:
+
+	;get the 4 digit 16 bit address into the de register
+	ld hl, $2015
+	ld a, (hl)
+	inc hl
+	ld b, (hl)
+	call asciiToHex
+
+	ld d, a
+
+	inc hl
+	ld a, (hl)
+	inc hl
+	ld b, (hl)
+	call asciiToHex
+	
+	ld e, a
+
+	;get the 8 bit value to pass into the actual command
+	inc hl
+	inc hl
+	ld a, (hl)
+	inc hl
+	ld b, (hl)
+	call asciiToHex
+
+ret
+
+manualioread:
+	
+	call VdpInsertEnter
+
+	call parseMemoryCommandVariables
+	ld b, d
+	ld c, e
+	in a, (c)
+
+	call aToScreenHex
+
+ret
+
+manualmemread:
+	
+	call VdpInsertEnter
+
+	call parseMemoryCommandVariables
+	ld h, d
+	ld l, e
+	ld a, (hl)
+
+	call aToScreenHex
+
+ret
+
+manualiowrite:
+
+	call parseMemoryCommandVariables
+	ld b, d
+	ld c, e
+	out (c), a
+ret
+
+manualmemwrite:
+
+	call parseMemoryCommandVariables
+	ld h, d
+	ld l, e
+	ld (hl), a
+ret
+
+fsInfoTestCommand:
+
+	call getPartitionInfo
+
+	call gotoRootDirectory 							;obtaining the lba of the root directory needs to be part of mounting a drive. Therefore i'm putting this in the mount command and not the dir command because this makes more sense for modularity
+
+	ld hl, genericok
+	call VPrintString
+	call VdpInsertEnter
+
+ret
+
 helpCommand:
 
 	call VdpInsertEnter
 	ld hl, availableCommands
+	call VPrintString
+
+	call VdpInsertEnter
+	ld hl, cftestcmd
 	call VPrintString
 
 	call VdpInsertEnter
@@ -723,11 +1056,53 @@ helpCommand:
 	call VPrintString
 
 	call VdpInsertEnter
+	ld hl, driveStatuscmd
+	call VPrintString
+
+	call VdpInsertEnter
+	ld hl, fsinfocmd
+	call VPrintString
+
+	call VdpInsertEnter
 	ld hl, helpcmd
+	call VPrintString
+
+	call VdpInsertEnter
+	ld hl, iordcmd
+	call VPrintString
+	ld hl, hexformat
+	call VPrintString
+
+	call VdpInsertEnter
+	ld hl, iowrcmd
+	call VPrintString
+	ld hl, hexformat
+	call VPrintString
+	ld hl, eightbithexformat
+	call VPrintString
+
+	call VdpInsertEnter
+	ld hl, memrdcmd
+	call VPrintString
+	ld hl, hexformat
+	call VPrintString
+
+	call VdpInsertEnter
+	ld hl, memwrcmd
+	call VPrintString
+	ld hl, hexformat
+	call VPrintString
+	ld hl, eightbithexformat
 	call VPrintString
 	
 	call VdpInsertEnter
 	ld hl, printcmd
+	call VPrintString
+
+	call VdpInsertEnter
+	ld hl, readmemorycmd
+	call VPrintString
+	ld hl, hexformat
 	call VPrintString
 
 	call VdpInsertEnter
@@ -748,6 +1123,123 @@ helpCommand:
 
 ret
 
+;	$96A0-$96A1: low byte for first value of 32 bit add
+;	$96A2-$96A3: high byte for first value of 32 bit add
+;	$96A4-$96A5: low byte for second value of 32 bit add
+;	$96A6-$96A7: high byte for second value of 32 bit add
+;
+;	$96A8-$96A9: low byte for result of a 32 bit arithmatic operation
+;	$96AA-$96AB: high byte for result of a 32 bit arithmatic operation
+
+test32bitAdd:
+	
+	call VdpInsertEnter
+
+	call add32BitNumber
+
+	;ld hl, $96A3
+	;ld a, (hl)
+	;call aToScreenHex
+	;ld hl, $96A2
+	;ld a, (hl)
+	;call aToScreenHex
+	;ld hl, $96A1
+	;ld a, (hl)
+	;call aToScreenHex
+	;ld hl, $96A0
+	;ld a, (hl)
+	;call aToScreenHex
+
+	call print1st32bitNum
+
+	ld a, "+"
+	call VdpPrintChar
+
+	call print2nd32bitNum
+	;ld hl, $96A7
+	;ld a, (hl)
+	;call aToScreenHex
+	;ld hl, $96A6
+	;ld a, (hl)
+	;call aToScreenHex
+	;ld hl, $96A5
+	;ld a, (hl)
+	;call aToScreenHex
+	;ld hl, $96A4
+	;ld a, (hl)
+	;call aToScreenHex
+
+	ld a, "="
+	call VdpPrintChar
+	call print32bitresultanswer
+
+	call VdpInsertEnter
+
+	call load16bitvaluesFromRam
+	call mul16
+	call loadmul16IntoRam
+	ld hl, bit16multstring
+	call VPrintString
+	call print32bitresultanswer
+
+	call VdpInsertEnter
+
+	call ramTomul32Do
+	call mul32
+
+	call print1st32bitNum
+
+	ld a, "*"
+	call VdpPrintChar
+
+	call print2nd32bitNum
+	;ld hl, $96A7
+	;ld a, (hl)
+	;call aToScreenHex
+	;ld hl, $96A6
+	;ld a, (hl)
+	;call aToScreenHex
+	;ld hl, $96A5
+	;ld a, (hl)
+	;call aToScreenHex
+	;ld hl, $96A4
+	;ld a, (hl)
+	;call aToScreenHex
+
+	ld a, "="
+	call VdpPrintChar
+
+	ld hl, $96AF
+	ld a, (hl)
+	call aToScreenHex
+
+	ld hl, $96AE
+	ld a, (hl)
+	call aToScreenHex
+
+	ld hl, $96AD
+	ld a, (hl)
+	call aToScreenHex
+
+	ld hl, $96AC
+	ld a, (hl)
+	call aToScreenHex
+
+	call print32bitresultanswer
+
+ret
+
+printCurrentDirectory:
+	
+	call VdpInsertEnter
+	call gotoRootDirectory
+	call VdpInsertEnter
+	call printAllFilesInSector
+
+ret
+
+cfstatusequals: db "CF card #0 status = ",0
+cferrorequals: db "CF card #0 error = ",0
 time: db "time= ",0
 badcommand: db "invalid syntax",0
 printcmd: db "print ",0
@@ -759,9 +1251,20 @@ setdatecmd: db "setdate ",0
 testvideocmd: db "testvideo",0
 vdpstatuscmd: db "vdpstatus ",0
 setvdpregcmd: db "setreg ",0
+readmemorycmd: db "read ",0
 loadfontscmd: db "loadfonts",0
 clearscreencmd: db "clear",0
+iowrcmd: db "iowr ",0
+iordcmd: db "iord ",0
+memwrcmd: db "mmwr ",0
+memrdcmd: db "mmrd ",0
+fsinfocmd: db "fsinfo",0
+lscmd: db "ls",0
+dircmd: db "dir",0
 testvramcmd: db "testvram",0
+driveStatuscmd: db "drivestatus",0
+driveerrorcmd: db "driveerror",0
+cftestcmd: db "cftest",0
 helpcmd: db "help",0
 togglevmodecmd: db "togglevmode",0
 changecolorcmd: db "changecolor",0
@@ -771,5 +1274,9 @@ palmsg: db "video mode is pal",0
 genericfailed: db "failed",0
 timeformat: db " [hhmmss]",0
 dateformat: db " [MMDDYY]",0
+hexformat: db " [NNNN(h)]",0
+testaddcmd: db "testadd",0
+bit16multstring: db "16 bit mult =",0
+eightbithexformat: db " [NN(h)]",0
 availableCommands: db "Available commands:",0
 fontLoaded: db "fonts loaded",0

@@ -1,9 +1,15 @@
+;http://www.brokenthorn.com/Resources/OSDevScanCodes.html
+;link to the only good page on the internet about keyboard scancodes
+
 ;MEMORY MAP:
 ;	rom: 0h-1FFFh
 ;	ram: 2000h-9FFFh
 ;	lcd: A000h-A003h
 ;	keyboard: A004h-A007h	(A004 is equivalent to 60h and A005 is equivalent to 64h on ibm x86 compatible pcs)
 ;	rtc: A010h-A01Fh
+;	CF #0: A030h-A03Fh
+;	CF #1: A040h-A04Fh
+;	USB: A100h-A1FFh
 ;
 ;
 ;Notable variable locations:
@@ -15,6 +21,27 @@
 ; 	$9EFC: variable im using so debug video changes color
 ;	$9EFB: vdp textmode line(row) number
 ;	$9EFA: vdp testmode column number
+;	$96F0-$96F0 + 2kb is: temp location where text is stored when shifting command line up
+;	$96EF: (LBA27-LBA24) drive head value of next drive operation
+;	$96EE: (LBA23-LBA16) high cylinder value of next drive operation
+;	$96ED: (LBA15-LBA08) low cylinder value of next driver operation
+;	$96EC: (LBA07 - LBA00) sector number of next drive operation
+;	$96EB: sector count of next drive operation
+;	$96EA: high memory address of where to copy drive sector to
+;	$96E9: low memory address of where to copy drive sector to
+;
+; 	$96E8: high number of bytes involved in last transfer
+; 	$96E7: low number of bytes involved in last transfer
+;	$96E6: number of retries it took to get valid drive data
+;
+;	$96C0-$96C7: temporary storage for random stuff of low importance
+;	$96A0-$96A1: low byte for first value of 32 bit add
+;	$96A2-$96A3: high byte for first value of 32 bit add
+;	$96A4-$96A5: low byte for second value of 32 bit add
+;	$96A6-$96A7: high byte for second value of 32 bit add
+;
+;	$96A8-$96A9: low byte for result of a 32 bit arithmatic operation
+;	$96AA-$96AB: high byte for result of a 32 bit arithmatic operation
 di
 ld sp, $9FFF		;set the stack pointer to the top of the ram
 ld hl, $9EFA
@@ -65,6 +92,8 @@ ld hl, welcomemsg
 call VPrintString
 call VdpInsertEnter
 
+call driveInit
+
 ;attempt to write contents of rtc to screen and do it over and over and over again
 getTime:
 
@@ -108,6 +137,8 @@ cp $08
 jr z, dontActuallyDoAnything 			;dont print backspace as a character
 cp $0A
 jr z, dontActuallyDoAnything    		;don't print enter as a character
+cp $09
+jr z, dontActuallyDoAnything    		;don't print tab as a character - it needs to be processed by the graphics driver
 
 ld hl, $2009
 ld b, 0
@@ -238,6 +269,7 @@ doNothing:
 ret
 
 ;converts whatever 4 bit value is in the a register to the valid ascii code for that respective number in hex
+;only modifies the a register
 aToHex:
 	add a, 48
 	cp 58
@@ -249,6 +281,9 @@ aToHex:
 	dontAdd7More:
 ret
 
+
+;takes whatever 8-bit value is in the a register and prints it to the screen in hex
+;modifies a, b, c and hl 
 aToScreenHex:
 	push af
 	res 0, a
@@ -270,6 +305,55 @@ aToScreenHex:
 	call aToHex
 	;call printChar
 	call VdpPrintChar
+ret
+
+;comverts 2 ascii values stored in a and b register respectivly into a single 8-bit hex value
+;where a is the high nibble and and b is the low nibble
+asciiToHex:
+	
+	;convert high nibble to a hex value
+	call asciiNibbleToHex
+	;rotate left for adding it to b later
+	sla a
+	sla a
+	sla a
+	sla a
+
+	;save a for later
+	push af
+		ld a, b
+		call asciiNibbleToHex
+		ld b, a
+	pop af
+
+	;add them together
+	add a, b
+
+	;the a register now contains the hex value of a and b assuming a and b started with valid ascii
+ret
+
+;converts whatever ascii code is in the a register to a 4-bit hex code
+;only modifies a register
+asciiNibbleToHex:
+
+	cp 58
+	jr c, subtractNumber
+	cp 71
+	jr c, subtractCapLetter
+	jr subtractLcLetter
+
+	subtractNumber:
+		sub 48
+		jr subtractionEnd
+	subtractCapLetter:
+		sub 55
+		jr subtractionEnd
+	subtractLcLetter:
+		sub 87
+		jr subtractionEnd
+
+	subtractionEnd:
+
 ret
 
 ;this function displays whatever is in the a register to the screen in binary form
@@ -431,7 +515,8 @@ scanCodeToAscii:
 
 	pop af
 
-	sub a, $15						;subtract $15 since it starts at 0 and not $15
+	sub a, $0D						;subtract $0D (I modified the scancode map to include tab)
+	;sub a, $15						;subtract $15 since it starts at 0 and not $15
 	push af
 
 	;gotta use add with carry so that it works correctly
@@ -640,9 +725,15 @@ checkIfNonChar:
 	;ld e, 0 						;if e is 0, the ascii code in register a is not a "nonchar". If e is 1, the ascii code in register a in a "nonchar"
 
 	cp $0A							;enter
-	jr nz, checkIfNonCharBackspace
+	jr nz, checkIfNonCharTab
 	call parseCliInput 				;when running "the terminal" enter always sends whatever the user has typed as a command
 									;a different program such as a text editor will need a slightly different version of this function
+	jr checkIfNonCharExit
+
+	checkIfNonCharTab:
+	cp $09
+	jr nz, checkIfNonCharBackspace
+	call VdpInsertTab
 	jr checkIfNonCharExit
 
 	checkIfNonCharBackspace:
@@ -812,6 +903,48 @@ CDivD:
        djnz $-8
 ret
 
+;This divides DE by BC, storing the result in DE, remainder in HL
+DE_Div_BC:          ;1281-2x, x is at most 16
+     ld a,16        ;7
+     ld hl,0        ;10
+     jp $+5         ;10
+DivLoop:
+       add hl,bc    ;--
+       dec a        ;64
+       ret z        ;86
+
+       sla e        ;128
+       rl d         ;128
+       adc hl,hl    ;240
+       sbc hl,bc    ;240
+       jr nc,DivLoop ;23|21
+       inc e        ;--
+       jp DivLoop+1
+ret
+
+HL_Div_C:
+;Inputs:
+;     HL is the numerator
+;     C is the denominator
+;Outputs:
+;     A is the remainder
+;     B is 0
+;     C is not changed
+;     DE is not changed
+;     HL is the quotient
+;
+       ld b,16
+       xor a
+         add hl,hl
+         rla
+         cp c
+         jr c,$+4
+           inc l
+           sub c
+         djnz $-7
+ret
+
+
 clearCommandBuffer:
 
 	ld hl, $2009  	;clear the command character counter (set it to zero)
@@ -825,8 +958,19 @@ clearCommandBuffer:
 
 ret
 
+;copies whatever's at the address in hl to whatever address is in de
+;modifies a
+;preserves hl and de
+addressToOtherAddress:
+	ld a, (hl)
+	ex de, hl
+	ld (hl), a
+	ex de, hl
+ret
+
 include '9958driver.asm'
 include 'commands.asm'
+include 'CFdriver.asm'
 
 TwentyCharsNothing: db "                    ",0
 longMessage: db "This message is longer than 1 line",0
@@ -838,5 +982,38 @@ welcomemsg: db "System ready",0
 
 ;here is my scancode to ascii table.
 ;I know, I know, someone call an exorcist
-keyboardMapShift: db "Q!$$$ZSAW@$$CXDE$#$$ VFTR%$$NBHGY^$$$MJU&*$$<KIO)($$>?L:P_$$$",$22,"${+$$",$1A,"$",$0A,"}$",$7C,"$$$$$$$$",$08,"$$1$47$$$0.2568**$+3-*9",0
-keyboardMapNoShift: db "q1$$$zsaw2$$cxde43$$ vftr5$$nbhgy6$$$mju78$$,kio09$$./l;p-$$$",$27,"$[=$$",$1A,"$",$0A,"]$",$5C,"$$$$$$$$",$08,"$$1$47$$$0.2568**$+3-*9",0
+keyboardMapShift: db $09,"~******Q!$$$ZSAW@$$CXDE$#$$ VFTR%$$NBHGY^$$$MJU&*$$<KIO)($$>?L:P_$$$",$22,"${+$$",$1A,"$",$0A,"}$",$7C,"$$$$$$$$",$08,"$$1$47$$$0.2568**$+3-*9",0
+nullShiftPadding: defs 144, 0
+keyboardMapNoShift: db $09,"`******q1$$$zsaw2$$cxde43$$ vftr5$$nbhgy6$$$mju78$$,kio09$$./l;p-$$$",$27,"$[=$$",$1A,"$",$0A,"]$",$5C,"$$$$$$$$",$08,"$$1$47$$$0.2568**$+3-*9",0
+
+;this string of null characters fixes a bug where the caps lock behaves unpredictably depending on what type of eeprom you're using or what method you used to write the rom image
+aBunchOfNulls: defs 144, 0
+
+;put this block of code where ever you want to end and split the file
+;Low block: 0000-1FFF (8kb in size)
+;High block: B000-FFFF (20,480 bytes in size). It needs to be from $3000-6FFF in the rom file. Total usable eeprom size is 28,672 bytes
+;This may be confusing but it's the best solution that doesnt break already existing software
+;I had to start including this block when I switched to a 32kb eeprom which has split addressing
+;------------------------------------------------------------------------------------------------------------------------------------------------
+if $ < $2000 				;if the remaining space inside the low eeprom block has not all been used, pad it the rest of the way with zeros    |
+	lowPadding: defs $1FFC-$, 0
+	lastLol: db "last" 																														;	|
+endif 																																		;	|
+; 																																				|
+;now pad the next 4kb with zeros since it's physically unaddressable and ignored by the hardware, software and control logic					|
+highPadding: defs $1000, 0 																													;   |
+;																																				|
+;as far as the software is concerned, the control logic gives this new memory block an address of $B000, so use org to tell it that 			|
+org $B000 																																	;	|
+;------------------------------------------------------------------------------------------------------------------------------------------------
+highMessage: db "this string is at the beginning of the high block",0
+include 'math.asm'
+
+;------------------------------------------------------
+;==>> MAKE SURE THE CODE STAYS ABOVE THIS LINE <<==
+;this next part just pads the entire rom with zeros
+;-----------------------------------------------------
+if $ < $FFFF
+	compatibilityZeros: defs $FFFF-$, 0
+endif
+oneMoreZero: db 0
