@@ -13,7 +13,10 @@
 ;
 ;
 ;Notable variable locations:
+;	$2000-$2003: input parameter (cluster #) of gotoClusterSector subroutine
+;	$2004: cluster offset of last gotoClusterSector calculation
 ;	$2005: the last scancode that came from the keyboard
+;	$2006: sector countdown for file explorer
 ;	$2009: keyboard input character counter variable
 ;	$2010: character buffer map (currently 40 chars)
 ;	$9EFF: caps lock true/false
@@ -553,7 +556,6 @@ ret
 
 ;preconditions: hl contains start address to clear. c contains number of bytes to clear
 ;post conditions: the range in memory has been set to zero
-;this doesnt work. I need to fix it
 clearRangeInRam:
 	;there hopefully now it's simple enough to not mess up
 	;ld d, 0
@@ -569,21 +571,20 @@ clearRangeInRam:
 		jr nz, clearrangeramcont
 ret
 
-;preconditions: hl contains start address to clear. c contains number of bytes to clear. a contains the value you want to fill in the address range
-;post conditions: every byte in memory range has been set to a
-;this doesnt work. I need to fix it
+;preconditions: hl contains start address to clear. c contains number of bytes to clear. e contains the value you want to fill in the address range
+;post conditions: every byte in memory range has been set to e
 fillRangeInRam:
-	ld d, 0
-	ld e, 0
+	;ld d, 0
+	;ld e, a
 	fillrangeramcont:
-		ld (hl), a
+		ld (hl), e
 		inc hl
-		inc e
+		dec c
 		push af
-		ld a, e
-		cp c
+		ld a, c
+		cp 0
 		pop af
-		jr c, fillrangeramcont
+		jr nz, fillrangeramcont
 ret
 
 keyboardGetType:
@@ -968,9 +969,24 @@ addressToOtherAddress:
 	ex de, hl
 ret
 
+;copies ram address in hl to ram address in de for bc bytes
+copyRamBlock:
+
+	call addressToOtherAddress
+	inc hl
+	inc de
+	dec bc
+	ld a, b
+	cp 0
+	jr nz, copyRamBlock
+	ld a, c
+	cp 0
+	jr nz, copyRamBlock
+
+ret
+
 include '9958driver.asm'
 include 'commands.asm'
-include 'CFdriver.asm'
 
 TwentyCharsNothing: db "                    ",0
 longMessage: db "This message is longer than 1 line",0
@@ -979,6 +995,7 @@ ready: db "ready",0
 controlPort: db "ctrl port= ",0
 kbdtype: db "kbstatus:",0
 welcomemsg: db "System ready",0
+genericBytes: db "bytes",0
 
 ;here is my scancode to ascii table.
 ;I know, I know, someone call an exorcist
@@ -1006,12 +1023,14 @@ highPadding: defs $1000, 0 																													;   |
 ;as far as the software is concerned, the control logic gives this new memory block an address of $B000, so use org to tell it that 			|
 org $B000 																																	;	|
 ;------------------------------------------------------------------------------------------------------------------------------------------------
-highMessage: db "this string is at the beginning of the high block",0
+;highMessage: db "this string is at the beginning of the high block",0
+include 'functionVectors.asm'
+include 'CFdriver.asm'
 include 'math.asm'
 
 ;------------------------------------------------------
 ;==>> MAKE SURE THE CODE STAYS ABOVE THIS LINE <<==
-;this next part just pads the entire rom with zeros
+;this next part just pads the entire rest of the rom with zeros
 ;-----------------------------------------------------
 if $ < $FFFF
 	compatibilityZeros: defs $FFFF-$, 0

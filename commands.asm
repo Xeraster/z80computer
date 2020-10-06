@@ -228,6 +228,51 @@ parseCliInput:
 	cp c
 	jp z, parseCliInputPrintDirectory
 
+	;check if the input is the cd command
+	ld hl, $2010
+	ld de, cdcmd
+	ld b, 3
+	call areStringsEqual
+	ld a, 1
+	cp c
+	jp z, parseCliInputChangeDirectory
+
+	;check if the input is the test1 command
+	ld hl, $2010
+	ld de, test1cmd
+	ld b, 5
+	call areStringsEqual
+	ld a, 1
+	cp c
+	jp z, parseCliTest1
+
+	;check if the input is the call command
+	ld hl, $2010
+	ld de, callcmd
+	ld b, 5
+	call areStringsEqual
+	ld a, 1
+	cp c
+	jp z, parseCliCallCommand
+
+	;check if the input is the run command
+	ld hl, $2010
+	ld de, runcmd
+	ld b, 4
+	call areStringsEqual
+	ld a, 1
+	cp c
+	jp z, parseCliRunCommand
+
+	;check if the input is the cfreset command
+	ld hl, $2010
+	ld de, cfresetcmd
+	ld b, 7
+	call areStringsEqual
+	ld a, 1
+	cp c
+	jp z, parseCliCfReset
+
 	;check if the input is the help command
 	ld hl, $2010
 	ld de, helpcmd
@@ -253,19 +298,19 @@ parseCliInput:
 		jp parseCliInputExit
 	parseCliInputShowTime:
 		call printTime
-		jr parseCliInputExit
+		jp parseCliInputExit
 	parseCliInputShowDate:
 		call printDate
-		jr parseCliInputExit
+		jp parseCliInputExit
 	parseCliInputSetTime:
 		call setTime
-		jr parseCliInputExit
+		jp parseCliInputExit
 	parseCliInputSetDate:
 		call setDate
-		jr parseCliInputExit
+		jp parseCliInputExit
 	parseCliInputGetKey:
 		call getKeyCommand
-		jr parseCliInputExit
+		jp parseCliInputExit
 	parseCliInputTestVideo:
 		call initializeVideo
 		jr parseCliInputExit
@@ -322,6 +367,21 @@ parseCliInput:
 		jr parseCliInputExit
 	parseCliInputPrintDirectory:
 		call printCurrentDirectory
+		jr parseCliInputExit
+	parseCliInputChangeDirectory:
+		call changeDirectoryCommand
+		jr parseCliInputExit
+	parseCliTest1:
+		call genericTest1Command
+		jr parseCliInputExit
+	parseCliCallCommand:
+		call callCommand
+		jr parseCliInputExit
+	parseCliRunCommand:
+		call runProgramFromDisk
+		jr parseCliInputExit
+	parseCliCfReset:
+		call CfReset
 		jr parseCliInputExit
 	parseCliInputHelp:
 		call helpCommand
@@ -885,6 +945,34 @@ CFTestCommand:
 
 ret
 
+callCommand:
+	;go ahead and make a new line
+	call VdpInsertEnter
+	ld hl, $2015
+	ld a, (hl)
+	inc hl
+	ld b, (hl)
+	call asciiToHex
+	ld d, a
+
+	inc hl
+	ld a, (hl)
+	inc hl
+	ld b, (hl)
+	call asciiToHex
+	ld e, a
+
+	;address of where to jump to is now in hl
+
+	;load return address into hl
+	ld hl, callCommandPlaceToReturnTo
+	ex de, hl
+	push de 	;push return address onto the stack without popping it
+	jp (hl) 	;jump to user inputted address
+	callCommandPlaceToReturnTo:
+
+ret
+
 readAndDisplayMemory:
 	call VdpInsertEnter
 
@@ -1135,7 +1223,7 @@ test32bitAdd:
 	
 	call VdpInsertEnter
 
-	call add32BitNumber
+	call subtract32BitNumber
 
 	;ld hl, $96A3
 	;ld a, (hl)
@@ -1152,7 +1240,7 @@ test32bitAdd:
 
 	call print1st32bitNum
 
-	ld a, "+"
+	ld a, "-"
 	call VdpPrintChar
 
 	call print2nd32bitNum
@@ -1173,68 +1261,223 @@ test32bitAdd:
 	call VdpPrintChar
 	call print32bitresultanswer
 
-	call VdpInsertEnter
-
-	call load16bitvaluesFromRam
-	call mul16
-	call loadmul16IntoRam
-	ld hl, bit16multstring
-	call VPrintString
-	call print32bitresultanswer
-
-	call VdpInsertEnter
-
-	call ramTomul32Do
-	call mul32
-
-	call print1st32bitNum
-
-	ld a, "*"
-	call VdpPrintChar
-
-	call print2nd32bitNum
-	;ld hl, $96A7
-	;ld a, (hl)
-	;call aToScreenHex
-	;ld hl, $96A6
-	;ld a, (hl)
-	;call aToScreenHex
-	;ld hl, $96A5
-	;ld a, (hl)
-	;call aToScreenHex
-	;ld hl, $96A4
-	;ld a, (hl)
-	;call aToScreenHex
-
-	ld a, "="
-	call VdpPrintChar
-
-	ld hl, $96AF
-	ld a, (hl)
-	call aToScreenHex
-
-	ld hl, $96AE
-	ld a, (hl)
-	call aToScreenHex
-
-	ld hl, $96AD
-	ld a, (hl)
-	call aToScreenHex
-
-	ld hl, $96AC
-	ld a, (hl)
-	call aToScreenHex
-
-	call print32bitresultanswer
 
 ret
 
 printCurrentDirectory:
 	
 	call VdpInsertEnter
-	call gotoRootDirectory
-	call VdpInsertEnter
+	;if depth = zero, then it's at the root.
+	;call gotoRootDirectory
+	;call VdpInsertEnter
 	call printAllFilesInSector
+
+	;now reset it back to the beginning of the cluster
+	call updateDirectoryFromData
+
+
+ret
+
+changeDirectoryCommand:
+	
+	;set all string spaces to spaces before doing string compare. This is required to make it work for files with names shorter than 8 characters
+	ld hl, $9684
+	ld c, 17
+	ld e, $20
+	call fillRangeInRam
+
+	call VdpInsertEnter
+
+	;first, check if the user inputted the go up a directory command
+	ld hl, $2013
+	ld a, (hl)
+	cp $2E
+	jr nz, changeDirectoryCommandContinueAndFindFile
+	call goUp1Directory
+	jr changeDirectoryCommandExitSuccess
+
+	changeDirectoryCommandContinueAndFindFile:
+	;copy the first 8 characters from the input buffer to $9684
+	ld hl, $2013
+	ld de, $9684
+	ld b, 9
+	copyCdSearchCharacters:
+		;ld a, (hl)
+		;cp 0
+		;jr nz, copyCdSearchCharactersDontReplaceNull
+		;ld a, $20
+		;ld (hl), a
+		;copyCdSearchCharactersDontReplaceNull:
+		;if it's a null, terminate the loop because that's the end of the string
+		ld a, (hl)
+		cp 0
+		jr z, copyCdSearchCharactersGTFO
+
+		call addressToOtherAddress
+		inc hl
+		inc de
+		dec b
+		ld a, b
+		cp 0
+		jr nz, copyCdSearchCharacters
+		copyCdSearchCharactersGTFO:
+
+	;now that the filename has been copied, search the current working directory for the file or folder
+	call searchFileInDirectory
+		
+	;check to see if the file was found or not. If $2000-$2003 = 00000000 then the file was not found
+	ld hl, $2000
+	ld a, (hl)
+	cp 0
+	jr nz, changeDirectoryCommandContinue
+	inc hl
+	ld a, (hl)
+	cp 0
+	jr nz, changeDirectoryCommandContinue
+	inc hl
+	ld a, (hl)
+	cp 0
+	jr nz, changeDirectoryCommandContinue
+	inc hl
+	ld a, (hl)
+	cp 0
+	jr nz, changeDirectoryCommandContinue
+	jr changeDirectoryCommandExitError
+
+	changeDirectoryCommandContinue:
+
+	;if it was found, increment the filesystem depth counter and calculate the lba address of where the file or folder starts
+	call enterDirectoryAtLocation
+	jr changeDirectoryCommandExitSuccess
+
+	changeDirectoryCommandExitError:
+		;file wasn't found. Be sure to rememeber to set it back to the beginning of the cluster
+		call updateDirectoryFromData
+		ld hl, directoryNotFound
+		call VPrintString
+
+	changeDirectoryCommandExitSuccess:
+
+ret
+
+runProgramFromDisk:
+
+	;set all string spaces to spaces before doing string compare. This is required to make it work for files with names shorter than 8 characters
+	ld hl, $9684
+	ld c, 17
+	ld e, $20
+	call fillRangeInRam
+
+	call VdpInsertEnter
+
+	;first, check if the user inputted the go up a directory command
+	ld hl, $2014
+	ld a, (hl)
+	cp $2E
+	jr nz, runProgramFromDiskContinueAndFindFile
+	;display this error if the user tries to run the parent directory as a program
+	ld hl, runDotDotError
+	call VPrintString
+	jr runProgramFromDiskExitSuccess
+
+	runProgramFromDiskContinueAndFindFile:
+	;copy the first 8 characters from the input buffer to $9684
+	ld hl, $2014
+	ld de, $9684
+	ld b, 9
+	runProgramFromDiskcopyCdSearchCharacters:
+		;ld a, (hl)
+		;cp 0
+		;jr nz, copyCdSearchCharactersDontReplaceNull
+		;ld a, $20
+		;ld (hl), a
+		;copyCdSearchCharactersDontReplaceNull:
+		;if it's a null, terminate the loop because that's the end of the string
+		ld a, (hl)
+		cp 0
+		jr z, runProgramFromDiskcopyCdSearchCharactersGTFO
+
+		call addressToOtherAddress
+		inc hl
+		inc de
+		dec b
+		ld a, b
+		cp 0
+		jr nz, runProgramFromDiskcopyCdSearchCharacters
+		runProgramFromDiskcopyCdSearchCharactersGTFO:
+
+	;now that the filename has been copied, search the current working directory for the file or folder
+	call searchFileInDirectory
+		
+	;check to see if the file was found or not. If $2000-$2003 = 00000000 then the file was not found
+	ld hl, $2000
+	ld a, (hl)
+	cp 0
+	jr nz, runProgramFromDiskContinue
+	inc hl
+	ld a, (hl)
+	cp 0
+	jr nz, runProgramFromDiskContinue
+	inc hl
+	ld a, (hl)
+	cp 0
+	jr nz, runProgramFromDiskContinue
+	inc hl
+	ld a, (hl)
+	cp 0
+	jr nz, runProgramFromDiskContinue
+	jr runProgramFromDiskExitError
+
+	runProgramFromDiskContinue:
+
+	;if it was found, increment the filesystem depth counter and calculate the lba address of where the file or folder starts
+	;treat the file as a directory
+	call enterDirectoryAtLocation
+	ld hl, $2110
+	ld de, $3000
+	ld bc, $0200
+	;copy first 512 bytess of the file into ram at $3000. Will change this to copy all the bytes later
+	call copyRamBlock
+	;now that the stuff has been copied, go up 1 directory to go back to the folder the file is in
+	call goUp1Directory
+	;run the program which starts at $3000
+	call $3000
+	jr runProgramFromDiskExitSuccess
+
+	runProgramFromDiskExitError:
+		;file wasn't found. Be sure to rememeber to set it back to the beginning of the cluster
+		call updateDirectoryFromData
+		ld hl, directoryNotFound
+		call VPrintString
+
+	runProgramFromDiskExitSuccess:
+
+ret
+
+CfReset:
+	
+	call driveInit
+	call VdpInsertEnter
+	ld hl, genericok
+	call VPrintString
+
+ret
+
+genericTest1Command:
+	call getClusterSize
+	;call gotoClusterSector
+	;ld hl, $9678
+	;ld de, $2000
+	;call addressToOtherAddress
+	;inc hl
+	;inc de
+	;call addressToOtherAddress
+	;inc hl
+	;inc de
+	;call addressToOtherAddress
+	;inc hl
+	;inc de
+	;call addressToOtherAddress
 
 ret
 
@@ -1258,6 +1501,7 @@ iowrcmd: db "iowr ",0
 iordcmd: db "iord ",0
 memwrcmd: db "mmwr ",0
 memrdcmd: db "mmrd ",0
+cdcmd: db "cd ",0
 fsinfocmd: db "fsinfo",0
 lscmd: db "ls",0
 dircmd: db "dir",0
@@ -1266,6 +1510,7 @@ driveStatuscmd: db "drivestatus",0
 driveerrorcmd: db "driveerror",0
 cftestcmd: db "cftest",0
 helpcmd: db "help",0
+test1cmd: db "test1",0
 togglevmodecmd: db "togglevmode",0
 changecolorcmd: db "changecolor",0
 genericok: db "OK",0
@@ -1275,8 +1520,13 @@ genericfailed: db "failed",0
 timeformat: db " [hhmmss]",0
 dateformat: db " [MMDDYY]",0
 hexformat: db " [NNNN(h)]",0
+callcmd: db "call ",0
+runcmd: db "run ",0
+cfresetcmd: db "cfreset",0
 testaddcmd: db "testadd",0
 bit16multstring: db "16 bit mult =",0
 eightbithexformat: db " [NN(h)]",0
 availableCommands: db "Available commands:",0
 fontLoaded: db "fonts loaded",0
+directoryNotFound: db "Directory not found",0
+runDotDotError: db "you can",$27,"t run the parent directory as an executable file, dumbass.",0

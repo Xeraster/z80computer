@@ -70,6 +70,80 @@ putResultInParameter1:
 
 ret
 
+;this needs to be run right before the DEHL_Div_C subroutine
+stupidDivisionPre:
+
+;load all the values from ram into the correct registers
+	ld hl, $96A0
+	ld c, (hl)
+	ld hl, $96A1
+	ld b, (hl)
+	ld hl, $96A2
+	ld e, (hl)
+	ld hl, $96A3
+	ld d, (hl)
+	ld l, c
+	ld h, b
+	push hl
+		ld hl, $96A4
+		ld c, (hl)
+	pop hl
+	;the registers are now loaded
+
+ret
+
+;math parameter 1 (32 bit) ($96A0-$96A3) / math parameter 2 (8 bit) ($96A4) = math result variable (32 bit) ($96A8-$96AB). remainder goes in $96AC and is an 8 bit number
+;Inputs:
+;     DEHL is a 32 bit value where DE is the upper 16 bits
+;     C is the value to divide DEHL by
+;Outputs:
+;    A is the remainder
+;    B is 0
+;    C is not changed
+;    DEHL is the result of the division
+;
+DEHL_Div_C:
+   xor	a
+   ld	b, 32
+
+_loop:
+   add	hl, hl
+   rl	e
+   rl	d
+   rla
+   jr	c, $+5
+   cp	c
+   jr	c, $+4
+
+   sub	c
+   inc	l
+   
+   djnz	_loop
+   
+   ret
+
+;run this after DEHL_Div_C. won't work if you modify to subrountine at all. No idea why
+stupidDivisionPost:
+
+	;now load the calculation results into the correct places in ram
+   ;load the remainder which is in the a register into $96AC
+   ld b, h
+   ld c, l
+   ld hl, $96AC
+   ld (hl), a
+
+   ;load calculation result which is in DEHL into $96A8-$96AB
+   ld hl, $96A8
+   ld (hl), c
+   ld hl, $96A9
+   ld (hl), b
+   ld hl, $96AA
+   ld (hl), e
+   ld hl, $96AB
+   ld (hl), d
+   ;done
+
+ret
 
 ;	$96A0-$96A1: low byte for first value of 32 bit add
 ;	$96A2-$96A3: high byte for first value of 32 bit add
@@ -138,6 +212,20 @@ add32BitNumber:
 	ld hl, $96AB
 	ld (hl), d
 
+
+ret
+
+subtract32BitNumber:
+	or a
+	ld hl, ($96A0)
+	ld de, ($96A4)
+	sbc hl, de
+	ld ($96A8), hl
+
+	ld hl, ($96A2)
+	ld de, ($96A6)
+	sbc hl, de
+	ld ($96AA), hl
 
 ret
 
