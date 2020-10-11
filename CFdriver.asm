@@ -1544,6 +1544,72 @@ printAllFilesInSector:
 		cp 0
 		jr z, printAllFilesInSectorGTFO
 
+		;this subroutine just does the same as the below commented out code
+		call incrementLbaByOne
+		;add 1 to the lba address
+		;ld hl, $96EC
+		;ld de, $96A0
+		;call addressToOtherAddress
+		;inc hl
+		;inc de
+		;call addressToOtherAddress
+		;inc hl
+		;inc de
+		;call addressToOtherAddress
+		;inc hl
+		;inc de
+		;call addressToOtherAddress
+
+		;add 1 to the current lba address
+		;ld hl, $96A4
+		;ld a, 1
+		;ld (hl), a
+		;ld a, 0
+		;inc hl
+		;ld (hl), a
+		;inc hl
+		;ld (hl), a
+		;inc hl
+		;ld (hl), a
+
+		;call add32BitNumber
+
+		;move the result from math output address to readCFSector next address
+		;ld hl, $96A8
+		;ld de, $96EC
+		;call addressToOtherAddress
+		;inc hl
+		;inc de
+		;call addressToOtherAddress
+		;inc hl
+		;inc de
+		;call addressToOtherAddress
+		;inc hl
+		;inc de
+		;call addressToOtherAddress
+
+		call readCFSector
+
+		;reset address pointer so it doesnt try to print random bytes from ram as files
+		ld hl, $96B0
+		ld a, $10
+		ld (hl), a
+		inc hl
+		ld a, $21
+		ld (hl), a
+
+		jp printAllFilesInSectorLoop1
+
+		;should probably program it to be able to print the entire directory if it spams multiple fat blocks but i'll do that later
+		;code for that will go under this comment
+
+	printAllFilesInSectorGTFO:
+
+
+ret
+
+incrementLbaByOne:
+
 		;add 1 to the lba address
 		ld hl, $96EC
 		ld de, $96A0
@@ -1585,24 +1651,6 @@ printAllFilesInSector:
 		inc hl
 		inc de
 		call addressToOtherAddress
-
-		call readCFSector
-
-		;reset address pointer so it doesnt try to print random bytes from ram as files
-		ld hl, $96B0
-		ld a, $10
-		ld (hl), a
-		inc hl
-		ld a, $21
-		ld (hl), a
-
-		jp printAllFilesInSectorLoop1
-
-		;should probably program it to be able to print the entire directory if it spams multiple fat blocks but i'll do that later
-		;code for that will go under this comment
-
-	printAllFilesInSectorGTFO:
-
 
 ret
 

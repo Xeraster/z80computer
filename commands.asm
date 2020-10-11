@@ -1430,19 +1430,40 @@ runProgramFromDisk:
 
 	runProgramFromDiskContinue:
 
-	;if it was found, increment the filesystem depth counter and calculate the lba address of where the file or folder starts
-	;treat the file as a directory
-	call enterDirectoryAtLocation
-	ld hl, $2110
-	ld de, $3000
-	ld bc, $0200
-	;copy first 512 bytess of the file into ram at $3000. Will change this to copy all the bytes later
-	call copyRamBlock
-	;now that the stuff has been copied, go up 1 directory to go back to the folder the file is in
-	call goUp1Directory
-	;run the program which starts at $3000
-	call $3000
-	jr runProgramFromDiskExitSuccess
+		;save the number of sectors per cluster to $2006
+		ld hl, $96DC
+		ld a, (hl)
+		ld hl, $2006
+		ld (hl), a
+
+		;if it was found, increment the filesystem depth counter and calculate the lba address of where the file or folder starts
+		;treat the file as a directory
+		call enterDirectoryAtLocation
+		ld de, $3000
+		jr runProgramFromDiskContinueCopySectorsFirstIteration
+		runProgramFromDiskContinueCopySectors:
+			push de
+				;I need to preserve de because it contains the address of the next location in ram to copy the drive buffer to
+				call incrementLbaByOne
+				call readCFSector
+			pop de
+			runProgramFromDiskContinueCopySectorsFirstIteration:
+			ld hl, $2110
+			ld bc, $0200
+			;copy first 512 bytess of the file into ram at $3000. Will change this to copy all the bytes later
+			;copyRamBlock modifies de by incrementing it bc times each iteration. I am going to not reset de each time so that I get a $96DC sector long string of data starting at $3000
+			call copyRamBlock
+			ld hl, $2006
+			ld a, (hl)
+			dec a
+			ld (hl), a
+			cp 0
+			jr nz, runProgramFromDiskContinueCopySectors
+			;now that the stuff has been copied, go up 1 directory to go back to the folder the file is in
+			call goUp1Directory
+			;run the program which starts at $3000
+			call $3000
+			jr runProgramFromDiskExitSuccess
 
 	runProgramFromDiskExitError:
 		;file wasn't found. Be sure to rememeber to set it back to the beginning of the cluster
