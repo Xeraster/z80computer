@@ -17,6 +17,8 @@
 ;	$2004: cluster offset of last gotoClusterSector calculation
 ;	$2005: the last scancode that came from the keyboard
 ;	$2006: sector countdown for file explorer
+;	$2007: screen pos x offset for g4 software sprite function note that the value in this address is half the value that will actually be used
+;	#2008: screen pos y offset for g4 software sprite function. note that 1 = 2
 ;	$2009: keyboard input character counter variable
 ;	$2010: character buffer map (currently 40 chars)
 ;	$9EFF: caps lock true/false
@@ -45,6 +47,10 @@
 ;
 ;	$96A8-$96A9: low byte for result of a 32 bit arithmatic operation
 ;	$96AA-$96AB: high byte for result of a 32 bit arithmatic operation
+;
+;$2FFE - used for draw rectangle filled function
+;
+;$927B ; where 8 bits of instantaneous keyboard keys are stored for games
 di
 ld sp, $9FFF		;set the stack pointer to the top of the ram
 ld hl, $9EFA
@@ -73,6 +79,15 @@ call waitForLcdReady
 ld hl, $A000
 ld (hl), %00000110
 
+;get the lcd ram counter to reset to zero
+call waitForLcdReady
+ld hl, $A000
+ld (hl), %10000000
+
+ld a, "!"
+call printChar
+
+
 ;send command to enable battery powered rtc and 24 hour time format
 ld hl, $A01E
 ld a, %00000110
@@ -84,11 +99,6 @@ call initializeVariables
 call delayForaWhile				;do a small delay to allow the 8042 time to recover from being reset
 ;read the 8042
 call initializeKeyboard
-
-;get the lcd ram counter to reset to zero
-call waitForLcdReady
-ld hl, $A000
-ld (hl), %10000000
 
 call initializeVideo
 ld hl, welcomemsg
@@ -168,9 +178,9 @@ ld (hl), c
 jr continueAndShowTypedInput
 
 continueAndShowTypedInput:
-push af
-call printChar 				;while currently useless, print whatever gets typed onto the screen before doing it on the lcd
-pop af
+;push af
+;call printChar 				;while currently useless, print whatever gets typed onto the screen before doing it on the lcd
+;pop af
 call VdpPrintChar
 call RowsColumnsToCursorPos 	;update the cursor position
 call RowsColumnsToVram 			;and then do this to allow the next character to get written to the correct place

@@ -66,3 +66,91 @@ ret
 ;$B038
 call print8bitDecimal
 ret
+
+;$B03C
+call clearMostVram
+ret
+
+;$B040
+call setupDefaultColors
+ret
+
+;$B044
+call setupG4Mode
+ret
+
+;$B048
+call drawLine
+ret
+
+;$B04C
+call waitVdpCommandFinished
+ret
+
+;$B050
+call drawRectangle
+ret
+
+;$B054
+call drawRectangleFilled
+ret
+
+;$B058
+call putResultInParameter1
+ret
+
+;$B05C
+call stupidDivisionPre
+ret
+
+;$B060
+call DEHL_Div_C
+ret
+
+;$B064
+call stupidDivisionPost
+ret
+
+;$B068
+call add32BitNumber
+ret
+
+;$B06C
+call subtract32BitNumber
+ret
+
+;$B070
+call load16bitvaluesFromRam
+ret
+
+;$B074
+call mul16
+ret
+
+;$B078
+call loadmul16IntoRam
+ret
+
+;$B07C
+call ramTomul32Do
+ret
+
+;$B080
+call mul32
+ret
+
+;$B084
+call kbd8042WaitReadReady
+ret
+
+;$B088
+call softwareSpriteToVramCompressed
+ret
+
+;$B08C
+call G4PrintChar
+ret
+
+;$B090
+call G4PrintString
+ret

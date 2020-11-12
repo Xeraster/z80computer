@@ -2,9 +2,11 @@
 ;port #1 Status register (R) / VRAM Address (W) / Register set-up (W)	$A021
 ;port #2 Palette registers (W)	$A022
 ;port #3 Register indirect addressing (W)
+;$2FFE - used for draw rectangle filled function
 initializeVideo:
 	call clearVram
 	call VdpCharsIntoRam
+	call setupDefaultColors
 
 	;set up palette register with 4 colors
 	;ld a, 0
@@ -54,7 +56,7 @@ initializeVideo:
 	call VdpWriteToStandardRegister
 
 	;set up register 12 and configure cursor color in text 2 mode
-	ld d, %00100011
+	ld d, %00001010
 	ld a, 12
 	call VdpWriteToStandardRegister
 
@@ -104,6 +106,178 @@ initializeVideo:
 	call printString
 
 	call backToPrevCursorPos
+
+ret
+
+;sets up and configures graphics 4 mode
+;	pattern layout (bitmap): 00000h-069ffh
+;	sprite patterns 07800h-07fffh
+;	sprite attributes 07600h-0767Ffh
+;	sprite colors 07400h-075ffh
+setupG4Mode:
+
+	;put the vdp into graphics mode 4. m5 = 0. m4 = 1. m3 = 1. m2 = 0. m1 = 0
+	;register 0
+	ld d, %00000110 		;change to %00000100 for text2. %00000000
+	ld a, 0
+	call VdpWriteToStandardRegister
+
+	;set up register 1
+	ld d, %01000000
+	ld a, 1
+	call VdpWriteToStandardRegister
+
+	;set up register 8
+	ld d, %00001000
+	ld a, 8
+	call VdpWriteToStandardRegister
+
+	;set register 23 to zero
+	ld d, 0
+	ld a, 23
+	call VdpWriteToStandardRegister
+
+	call clearMostVram
+
+	;here's what I need to set:
+	;	pattern layout (bitmap): 00000h-069ffh
+	;	sprite patterns 07800h-07fffh
+	;	sprite attributes 07600h-0767Ffh
+	;	sprite colors 07400h-075ffh
+
+	;pattern layout table
+	ld d, %00011111
+	ld a, 2
+	call VdpWriteToStandardRegister
+
+	;sprite patterns
+	ld d, %00001111
+	ld a, 6
+	call VdpWriteToStandardRegister
+
+	;sprite attributes high
+	ld d, %00000000
+	ld a, 11
+	call VdpWriteToStandardRegister
+
+	;sprite attributes low ($7600)
+	ld d, %11101111
+	ld a, 5
+	call VdpWriteToStandardRegister
+
+	;sprite color table high
+	ld d, %00000001
+	ld a, 10
+	call VdpWriteToStandardRegister
+
+	;sprite color table low
+	ld d, %11010000
+	ld a, 3
+	call VdpWriteToStandardRegister
+
+ret
+
+;sets the color palette to the default
+;I'm making it the same as the Microsoft Windows default 16-color palette
+;https://en.wikipedia.org/wiki/List_of_software_palettes#Microsoft_Windows_default_16-color_palette
+setupDefaultColors:
+	
+	;color 0 = black
+	ld a, 0
+	ld d, 0
+	ld e, 0
+	call VdpWriteToPaletteRegister
+
+	;color 1 = maroon
+	ld a, 1
+	ld d, %01000000
+	ld e, %00000000
+	call VdpWriteToPaletteRegister
+
+	;color 2 = dark green
+	ld a, 2
+	ld d, %00000000
+	ld e, %00000100
+	call VdpWriteToPaletteRegister
+
+	;color 3 = poop brown
+	ld a, 3
+	ld d, %01000000
+	ld e, %00000100
+	call VdpWriteToPaletteRegister
+
+	;color 4 = navy blue
+	ld a, 4
+	ld d, %00000100
+	ld e, %00000000
+	call VdpWriteToPaletteRegister
+
+	;color 5 = purple
+	ld a, 5
+	ld d, %01000100
+	ld e, %00000000
+	call VdpWriteToPaletteRegister
+
+	;color 6 = teal
+	ld a, 6
+	ld d, %00000100
+	ld e, %00000100
+	call VdpWriteToPaletteRegister
+
+	;color 7 = silver
+	ld a, 7
+	ld d, %01000100
+	ld e, %00000100
+	call VdpWriteToPaletteRegister
+
+	;color 8 = gray
+	ld a, 8
+	ld d, %00100010
+	ld e, %00000010
+	call VdpWriteToPaletteRegister
+
+	;color 9 = red
+	ld a, 9
+	ld d, %01110000
+	ld e, %00000000
+	call VdpWriteToPaletteRegister
+
+	;color 10 = bright green
+	ld a, 10
+	ld d, %00000000
+	ld e, %00000111
+	call VdpWriteToPaletteRegister
+
+	;color 11 = yellow
+	ld a, 11
+	ld d, %01110000
+	ld e, %00000111
+	call VdpWriteToPaletteRegister
+
+	;color 12 = blue
+	ld a, 12
+	ld d, %00000111
+	ld e, %00000000
+	call VdpWriteToPaletteRegister
+
+	;color 13 = fuchsia
+	ld a, 13
+	ld d, %01110111
+	ld e, %00000000
+	call VdpWriteToPaletteRegister
+
+	;color 14 = aqua
+	ld a, 14
+	ld d, %00000111
+	ld e, %00000111
+	call VdpWriteToPaletteRegister
+
+	;color 15 = white
+	ld a, 15
+	ld d, %01110111
+	ld e, %00000111
+	call VdpWriteToPaletteRegister
+
 
 ret
 
@@ -464,6 +638,32 @@ clearVram:
 
 ret
 
+;clear first 32kb of vram
+clearMostVram:
+	ld a, 14
+	ld d, 0
+	call VdpWriteToStandardRegister
+	ld c, $20
+	ld a, 0
+	out (c), a
+	add a, 64
+	out (c), a
+
+	ld hl, $8000 	;clear the first 8kb of vram
+	ld e, 0
+
+	clearMostVramContinue:
+		out (c), e
+		dec hl
+		ld a, h
+		or l
+		nop
+		nop
+		jr nz, clearMostVramContinue
+
+
+ret
+
 eraseScreen:
 
 	;a slow but low-memory way of getting all the registers ready and vram pointer in the correct spot
@@ -587,6 +787,480 @@ checkScreenSize:
 	call shiftScreenUp
 
 	checkScreenSizeExit:
+
+ret
+
+;this draws a line onto page 0 while in graphics 4 mode
+;b = xpos start. c = ypos start.
+;d = xpos end. e = ypos end
+;a = color index
+drawLine:
+
+	push af
+	ex de, hl
+	push hl
+		push bc
+		;set x starting point of line
+		ld d, b
+		ld a, 36
+		call VdpWriteToStandardRegister
+		ld d, %00000000
+		ld a, 37
+		call VdpWriteToStandardRegister
+		pop bc
+		push bc
+		;set y starting point of line
+		ld d, c
+		ld a, 38
+		call VdpWriteToStandardRegister
+		ld d, %00000000
+		ld a, 39
+		call VdpWriteToStandardRegister
+	pop bc
+	pop hl
+	;if d is greater than b, I want d to become the result of d-b
+	;otherwise, I want d to become the result of b-d
+	ex de, hl
+	ld hl, $0000
+
+	ld a, d
+	cp b
+	jr nc, dIsGreater
+	jr bIsGreater
+
+	dIsGreater:
+		sub b
+		ld d, a
+		;x transfer diretion = right. Therefore there is no need to change the x transfer direction bit
+		jr firstComparisonGTFO
+	bIsGreater:
+		ld a, b
+		sub d
+		ld d, a
+		;x transfer direction = left
+		ld a, l
+		or %00000100
+		ld l, a
+
+	firstComparisonGTFO:
+
+	ld a, e
+	cp c
+	jr nc, eIsGreater
+	jr cIsGreater
+
+	eIsGreater:
+		sub c
+		ld e, a
+		;y transfer direction = down. Therefore there is no need to change the y transfer direction bit
+		jr secondComparisonGTFO
+	cIsGreater:
+		ld a, c
+		sub e
+		ld e, a
+		;y transfer direction = up
+		ld a, l
+		or %00001000
+		ld l, a
+
+	secondComparisonGTFO:
+
+	;de should now contain x length and y length
+	;now I need to figure out which one to assign to long side and low side
+	;I also don't need the contents of bc anymore. bc can now be used for variable storage or whatever
+	ld a, d
+	cp e
+	jr nc, dIsLongSide
+	jr eIsLongSide
+
+	dIsLongSide:
+		ld c, e
+		ld b, d
+		jr thirdComparisonGTFO
+	eIsLongSide:
+		ld c, d
+		ld b, e
+		ld a, l
+		or %00000001
+		ld l, a
+
+	thirdComparisonGTFO:
+		push hl
+			push bc
+				;set long side dots num
+				ld d, b
+				ld a, 40
+				call VdpWriteToStandardRegister
+				ld d, %00000000
+				ld a, 41
+				call VdpWriteToStandardRegister
+			pop bc
+			;set short side dots num
+			ld d, c
+			ld a, 42
+			call VdpWriteToStandardRegister
+			ld d, %00000000
+			ld a, 43
+			call VdpWriteToStandardRegister
+		pop hl
+
+	pop af
+	push hl
+		;set line color
+		ld d, a
+		ld a, 44
+		call VdpWriteToStandardRegister
+	pop hl
+	;set register 45
+	ld d, l
+	ld a, 45
+	call VdpWriteToStandardRegister
+
+	;define logical operation - %01110000 for line command
+	ld d, %01110000
+	ld a, 46
+	call VdpWriteToStandardRegister
+
+
+ret
+
+;waits until the vdp is finished with a command by checking CE bit (bit 0) of status register S#2
+waitVdpCommandFinished:
+
+	ld d, 2
+	ld a, 15
+	call VdpWriteToStandardRegister
+	ld c, $21
+	in a, (c)
+	and %00000001
+	cp 0
+	jr nz, waitVdpCommandFinished
+
+ret
+
+;draws a non-filled in rectangle.
+;b = x position of rectangle start
+;c = y position of recangle start
+;d = size x of rectangle
+;e = size y of rectangle
+;a = color index
+drawRectangle:
+
+	;draw top line
+	push bc
+	push de 
+	push af
+		ld l, a
+		ld a, d
+		add a, b
+		ld d, a
+
+		ld e, c
+		ld a, l
+		call drawLine
+		call waitVdpCommandFinished
+	pop af
+	pop de
+	pop bc
+
+	;draw bottom line
+	push bc
+	push de
+	push af
+		ld l, a
+		ld a, d
+		add a, b
+		ld d, a
+
+		ld a, e
+		add a, c
+		ld e, a
+		ld c, a
+		ld a, l
+		call drawLine
+		call waitVdpCommandFinished
+	pop af
+	pop de
+	pop bc
+
+	;draw leftmost line
+	push bc
+	push de
+	push af
+		ld l, a
+		ld d, b
+
+		ld a, c
+		add a, e
+		ld e, a
+		ld a, l
+		call drawLine
+		call waitVdpCommandFinished
+	pop af
+	pop de
+	pop bc
+
+	;draw rightmost line
+	push bc
+	push de
+	push af
+		ld l, a
+		ld a, b
+		add a, d
+		ld d, a
+		ld b, a
+
+		ld a, c
+		add a, e
+		ld e, a
+		ld a, l
+		call drawLine
+		call waitVdpCommandFinished
+	pop af
+	pop de
+	pop bc
+
+ret
+
+;draws a non-filled in rectangle.
+;b = x position of rectangle start
+;c = y position of recangle start
+;d = size x of rectangle
+;e = size y of rectangle
+;a = color index
+drawRectangleFilled:
+	;first draw the outline
+	;call drawRectangle
+
+	push af
+		ld a, e
+		;add a, e
+		ld hl, $2FFE
+		ld (hl), a
+	pop af
+	;calculate first horizontal line
+	ld l, a
+	ld a, d
+	add a, b
+	ld d, a
+
+	ld e, c
+	drawRectangleFilledContinueLoop:
+	ld a, l
+	push hl
+	push af
+	push bc
+	push de
+		call drawLine
+		call waitVdpCommandFinished
+	pop de
+	pop bc
+	pop af
+	ld hl, $2FFE
+	ld a, (hl)
+	dec a
+	inc c
+	inc e
+	ld (hl), a
+	pop hl
+	cp 0
+	jr nz, drawRectangleFilledContinueLoop
+
+ret
+
+;prints a single character to the screen in graphics 4 mode at whatever position is in 2007(x) and 2008(y)
+;remember the values in 2007 and 2008 are HALF the value of what gets used in screen space
+;for example, 100,100 means it will copy the character to position 200,200 on the screen
+;whatever ascii code is in the a register gets copied to the screen as the corresponding character
+G4PrintChar:
+
+	;load address of first character font
+	ld hl, letters_space
+
+	push hl
+		;calculate the position in memory of the requested charcter
+		sub 32
+		ld de, $0008
+		call DE_Times_A
+		ex de, hl
+	pop hl
+	;with any luck, the address of the correct character should now be in hl
+	add hl, de
+
+	;copy it to the screen
+	call softwareSpriteToVramCompressed
+ret
+
+;prints whatever string is pointed to in memory by hl to the screen in g4 mode
+;uses whatever position is in $2007,$2008 using the same /2 rule
+G4PrintString:
+	
+	ld a, (hl)
+	;check to see if the character is a null. if so, exit the loop
+	cp 0
+	jr z, G4PrintStringGTFO
+
+	push hl
+	;print single character
+	call G4PrintChar
+	;increment g4 software sprite counter by 4
+	ld hl, $2007
+	ld a, (hl)
+	add 4
+	ld (hl), a
+	pop hl
+
+	;go to position of next character in memory and then do all that again
+	inc hl
+	jr G4PrintString
+
+	G4PrintStringGTFO:
+
+ret
+
+;	$2007: screen pos x offset for g4 software sprite function
+;	#2008: screen pos y offset for g4 software sprite function
+;used for copying text 1 fonts to the screen when in g4 mode
+;deadling with characters in g4 mode this way used 8x less memory than using uncompressed multi color sprites as software sprite fonts
+softwareSpriteToVramCompressed:
+
+	ld d, 64
+	ld e, 0
+	;ld hl, letters_00
+	softwareSpriteCompressedCopyLoopY:
+	softwareSpriteCompressedCopyLoopX:
+		;base address of vram
+		ld a, 14
+		push de
+		ld d, 0
+		push hl
+		call VdpWriteToStandardRegister
+		pop hl
+		pop de
+		;ld c, $21
+		;ld a, d
+		push de
+		push hl
+		push bc
+		ld hl, $2007
+		ld a, (hl)
+		add e
+		ld e, a
+		ld hl, $2008
+		ld bc, $0000
+		ld c, (hl)
+		ld a, c
+		sla c
+		sla c
+		sla c
+		sla c
+		sla c
+		sla c
+		sla c
+		and %11111110
+		ld b, a
+		ex de, hl
+		add hl, bc
+		ex de, hl
+		pop bc
+		out (c), e
+		;ld a, e
+		out (c), d
+		pop hl
+		pop de
+
+		;ld hl, letters_0
+		;ld a, (hl)
+
+		call rotateAndMunge
+
+
+		writeByteCompressed:
+			ld b, $A0
+			ld c, $20
+			out (c), a
+			inc e
+			;inc hl
+			ld a, e
+			and %01111111
+			cp 4
+			jr nz, softwareSpriteCompressedCopyLoopX
+			inc hl
+			ld a, e
+			and %10000000
+			ld e, a
+			ex de, hl
+			ld bc, 128
+			add hl, bc
+			ex de, hl
+			ld a, d
+			cp 68
+			jr nz, softwareSpriteCompressedCopyLoopY
+
+ret
+
+rotateAndMunge:
+
+	ld a, e
+	and %01111111
+	cp 0
+	jr z, rotateAndMungeDis0
+	cp 1
+	jr z, rotateAndMungeDis1
+	cp 2
+	jr z, rotateAndMungeDis2
+	jr rotateAndMungeDis3
+	rotateAndMungeDis0:
+		ld a, (hl)
+		and %11000000
+		srl a
+		srl a
+		srl a
+		srl a
+		srl a
+		srl a
+		jr rotateAndMungeContinue
+	rotateAndMungeDis1:
+		ld a, (hl)
+		and %00110000
+		srl a
+		srl a
+		srl a
+		srl a
+		jr rotateAndMungeContinue
+	rotateAndMungeDis2:
+		ld a, (hl)
+		and %00001100
+		srl a
+		srl a
+		jr rotateAndMungeContinue
+	rotateAndMungeDis3:
+		ld a, (hl)
+		and %00000011
+		jr rotateAndMungeContinue
+
+	rotateAndMungeContinue:
+		cp 0
+		jr z, rotateAndMungeIs0
+		cp 1
+		jr z, rotateAndMungeIs1
+		cp 2
+		jr z, rotateAndMungeIs2
+		jr rotateAndMungeIs3
+
+		rotateAndMungeIs0:
+			ld a, %00000000
+			jr rotateAndMungeExit
+		rotateAndMungeIs1:
+			ld a, %00001111
+			jr rotateAndMungeExit
+		rotateAndMungeIs2:
+			ld a, %11110000
+			jr rotateAndMungeExit
+		rotateAndMungeIs3:
+			ld a, %11111111
+
+		rotateAndMungeExit:
 
 ret
 

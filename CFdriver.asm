@@ -100,6 +100,10 @@
 ;($9678-(current depth*4)): 32bit cluster number of current working directory
 ;
 ;
+;
+;;$2FFE - used for draw rectangle filled function
+;
+;
 ;======================================
 ; file layout structure explained
 ;======================================
@@ -894,6 +898,7 @@ print16BitDecimal:
 
 ret
 
+;pretty sure this is the one that doesn't work
 ;prints the low 2 digits of an 8 bit decimal ignoring the highest digit
 print2DigitDecimal:
 
