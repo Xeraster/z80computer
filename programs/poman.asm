@@ -1,24 +1,70 @@
-VdpWriteToStandardRegister: equ $B01C
-ClearScreen: equ $B014
-initializeVideo: equ $B018
-waitChar: equ $B024
-VdpInsertEnter: equ $B008
+VdpPrintChar: equ $B000
 VPrintString: equ $B004
-clearMostVram: equ $B03C
+VdpInsertEnter: equ $B008
+VdpBackspace: equ $B00C
+VdpInsertTab: equ $B010
+ClearScreen: equ $B014
+
+;if you do anything to change the video mode, run this when you're done to put things back to the way they were
+initializeVideo: equ $B018
+
+;d should contain register data
+;a should contain register number
+VdpWriteToStandardRegister: equ $B01C
+
+; a register needs to contain palette register number you want to write to (0-15)
+; d register needs to contain first palette byte
+; e register needs to contain second palette byte
+;note that the pointer value in register 16 auto increments each time you do this
 VdpWriteToPaletteRegister: equ $B020
+
+;this function waits for the user to input a key. Once a keyboard key has been pressed, it loads the a register with the respective ascii code
+waitChar: equ $B024
+RowsColumnsToCursorPos: equ $B028 	;update the cursor position
+RowsColumnsToVram: equ $B02C
+print16BitDecimal: equ $B030
+print2DigitDecimal: equ $B034
+print8bitDecimal: equ $B038
+clearMostVram: equ $B03C
+setupDefaultColors: equ $B040
 setupG4Mode: equ $B044
 drawLine: equ $B048
 waitVdpCommandFinished: equ $B04C
 drawRectangle: equ $B050
 drawRectangleFilled: equ $B054
-
+putResultInParameter1: equ $B058
+stupidDivisionPre: equ $B05C
+DEHL_Div_C: equ $B060
+stupidDivisionPost: equ $B064
+add32BitNumber: equ $B068
+subtract32BitNumber: equ $B06C
 load16bitvaluesFromRam: equ $B070
 mul16: equ $B074
 loadmul16IntoRam: equ $B078
-putResultInParameter1: equ $B058
-add32BitNumber: equ $B068
+ramTomul32Do: equ $B07C
+mul32: equ $B080
 kbd8042WaitReadReady: equ $B084
+softwareSpriteToVramCompressed: equ $B088
+G4PrintChar: equ $B08C
 G4PrintString: equ $B090
+HL_Div_C: equ $B094
+b16bitDecimalToHl: equ $B098
+b8bitDecimalToHl: equ $B09C
+b2DigitDecimalToHl: equ $B0A0
+fillRangeInRam: equ $B0A4
+addressToOtherAddress: equ $B0A8
+DE_Times_A: equ $B0AC
+
+;a = sprite entry you want to change 
+;d=x position to change the sprite to
+;e=y position to change the sprite to
+;l=sprite number to change sprite appearance to
+changeSpriteSettings: equ $B0B0
+
+randomNumber: equ $B0B4
+sysIdentify: equ $B0B8
+;$B0BC
+aToScreenHex: equ $B0BC
 
 ;2FFC = player position x
 ;2FFB = player position y
@@ -47,7 +93,14 @@ G4PrintString: equ $B090
 
 ;2FEE = score
 
+keyPressByteLocation: equ $2FE6
+
 org $3000
+	;clear controls buffer
+	ld hl, keyPressByteLocation
+	ld a, 0
+	ld (hl), a
+
 	ld hl, $2007
 	ld a, 0
 	ld (hl), a
@@ -344,18 +397,23 @@ org $3000
 	ld hl, $2007
 	ld a, 24
 	ld (hl), a
-	ld hl, letters_00
-	call softwareSpriteToVram
+	ld a, "0"
+	call G4PrintChar
+	;call softwareSpriteToVram
 	ld hl, $2007
 	ld a, 28
 	ld (hl), a
-	ld hl, letters_00
-	call softwareSpriteToVram
+	ld a, "0"
+	call G4PrintChar
+	;ld hl, letters_00
+	;call softwareSpriteToVram
 	ld hl, $2007
 	ld a, 32
 	ld (hl), a
-	ld hl, letters_00
-	call softwareSpriteToVram
+	ld a, "0"
+	call G4PrintChar
+	;ld hl, letters_00
+	;call softwareSpriteToVram
 
 	;move the currently unused sprites out of the way: sprites # 3 and 6
 	ld e, 230
@@ -414,12 +472,20 @@ org $3000
 	call checkCollisions
 
 	;wait for the user to press a key before exiting
-	call checkChar
-	;ld hl, $2005
-	;ld a, (hl)
-	cp $F0
-	jr z, gameLoop
-	cp $1C
+	;call checkChar
+	call getKeys
+	;cp $F0
+	;jr z, gameLoop
+
+;a=1c
+;s=1b
+;d = $23
+;w=1D
+;$972B = bit 7 = esc, bit 6 = enter, bit 5 = space, bit 4 = q, bit 3 = w, bit 2 = a, bit 1 = s, bit 0 = d
+	ld hl, keyPressByteLocation
+	ld a, (hl)
+	and %00000100
+	cp %00000100
 	jr z, goRight
 	jr goRightGTFO
 	goRight:
@@ -433,9 +499,13 @@ org $3000
 		;ld l, 2
 		call timeTilPlayerSpriteChange
 		;call changeSpriteSettings
-		jr gameLoop
+		;jr gameLoop
 	goRightGTFO:
-	cp $23
+	;d key
+	ld hl, keyPressByteLocation
+	ld a, (hl)
+	and %00000001
+	cp %00000001
 	jr z, goLeft
 	jr goLeftGTFO
 	goLeft:
@@ -449,9 +519,13 @@ org $3000
 		;ld l, 2
 		call timeTilPlayerSpriteChange
 		;call changeSpriteSettings
-		jr gameLoop
+		;jr goUpGTFO ; give right direction precedence over left (so they wont fight each other if player presses both)
 	goLeftGTFO:
-		cp $1D	;the scancode for "W"
+		;w key
+		ld hl, keyPressByteLocation
+		ld a, (hl)
+		and %00001000
+		cp %00001000
 		jr z, goUp
 		jr goUpGTFO
 	goUp:
@@ -469,9 +543,13 @@ org $3000
 		;ld a, 2
 		call timeTilPlayerSpriteChange
 		;call changeSpriteSettings
-		jr gameLoop
+		;jr goDownGTFO 		;give up key
 	goUpGTFO:
-	cp $1B	;the scancode for "S"
+	;s key
+		ld hl, keyPressByteLocation
+		ld a, (hl)
+		and %00000010
+		cp %00000010
 		jr z, goDown
 		jr goDownGTFO
 	goDown:
@@ -490,9 +568,13 @@ org $3000
 		;ld a, 2
 		call timeTilPlayerSpriteChange
 		;call changeSpriteSettings
-		jp gameLoop
+		;jp gameLoop
 	goDownGTFO:
-	cp $29		;space - jump
+	;space
+	ld hl, keyPressByteLocation
+	ld a, (hl)
+	and %00100000
+	cp %00100000
 	jr z, guyJump
 	jr guyJumpGTFO
 	guyJump:
@@ -510,10 +592,14 @@ org $3000
 		ld hl, $2FF6
 		ld a, 30
 		ld (hl), a
-		jp gameLoop
+		;jp gameLoop
 	guyJumpGTFO:
 	;pressing esc exits the game
-	cp $76
+	ld hl, keyPressByteLocation
+	ld a, (hl)
+	and %10000000
+	cp %10000000
+	;cp $76
 	jp nz, gameLoop
 
 	;put everything back to normal
@@ -987,9 +1073,22 @@ checkCollisions:
 			ld a, 64
 			ld (hl), a
 		potatoGenX:
+			;03/11/2021 - adding in a random number generator and changing some stuff
+			call randomNumber
+			cp 170
+			jr c, addMoreCollosionRandomBleb
+			cp 16
+			jr nc, subMoreCollisionRandomBleb
+			jr dontAddMoreCollisionRandomBleb
+			addMoreCollosionRandomBleb:
+			sub 20
+			jr dontAddMoreCollisionRandomBleb
+			subMoreCollisionRandomBleb:
+			add 20
+			dontAddMoreCollisionRandomBleb:
 			ld hl, $2FF2
-			ld a, (hl)
-			add 47
+			;ld a, (hl)
+			;add 47
 			ld (hl), a
 
 		;now redraw the potato
@@ -1469,100 +1568,6 @@ reallySmallDelay:
 	pop af
 ret
 
-;a = sprite entry you want to change 
-;d=x position to change the sprite to
-;e=y position to change the sprite to
-;l=sprite number to change sprite appearance to
-changeSpriteSettings:
-push hl
-push de
-
-	ld d, 0
-	ld e, a
-	ld a, 4
-	call DE_Times_A
-	ex de, hl
-	ld hl, $96A0
-	ld (hl), e
-	inc hl
-	ld (hl), d
-	inc hl
-	ld a, 0
-	ld (hl), a
-	inc hl
-	ld (hl), a
-
-	;the commentted out block is slower
-	;--------------------------------------------------------------------------
-	;4* sprite entry
-	;ld hl, $96A0
-	;ld (hl), a
-	;inc hl
-	;ld a, 0
-	;ld (hl), a
-	;inc hl
-	;ld a, 4
-	;ld (hl), a
-	;inc hl
-	;ld a, 0
-	;ld (hl), a
-
-	;call load16bitvaluesFromRam
-	;call mul16
-	;call loadmul16IntoRam
-	;call putResultInParameter1
-	;--------------------------------------------------------------------------
-
-	;now copy the starting address of the sprite attributes table into math parameter 2
-	ld hl, $96A4
-	ld a, 0		;bits 7-0 of the sprite attribute table start
-	ld (hl), a
-	inc hl
-	ld a, %01110110 	;bits 15-8 of sprite attribute table start
-	ld (hl), a
-	inc hl
-	ld a, 0
-	ld (hl), a
-	inc hl
-	ld (hl), a
-
-	;add base sprite attribute address to 
-	call add32BitNumber
-
-
-	;draw each sprite on the screen in a quick and dirty way just so I can look at them
-	;copy the sprite info to the attribute table at $7000
-	ld a, 14
-	ld d, %00000001 	;bits a16, a15 and a14. is always going to stay unchanged for this purpose
-	call VdpWriteToStandardRegister
-	ld hl, $96A8
-	ld a, (hl)			;calculated value of bits 0-7
-	;ld a, %00000000 	;bits a0-a7
-	out (c), a
-	ld hl, $96A9
-	ld a, (hl)
-	or %01000000
-	res 7, a 			;should be in the correct configuration now
-	;ld a, %01110110 	;bits a8-a13. bit 6 is r/w. bit 7 should stay zero
-	out (c), a
-
-pop de
-pop hl
-	;get ready to start writing to port 0 - the vram access port
-	ld b, $A0
-	ld c, $20
-
-	out (c), e
-	call reallySmallDelay
-	out (c), d
-	call reallySmallDelay
-	out (c), l
-	call reallySmallDelay
-	ld a, 0
-	out (c), a
-
-ret
-
 ;wait for next frame
 ;used to make games run at a fixed framerate even if the cpu is much faster than the program was originally designed to be run on
 waitVblank:
@@ -1586,43 +1591,136 @@ waitVblank:
 
 ret
 
-;this function checks to see if the user has pressed a key
+getKeys:
+	call checkChar
+	cp 0
+	ret z
+
+	checkDKey:
+	cp $23
+	jr nz, checkSKey
+	ld c, %00000001
+	ld b, %11111110
+	jr endKeyCompare
+
+	checkSKey:
+	cp $1B
+	jr nz, checkAKey
+	ld c, %00000010
+	ld b, %11111101
+	jr endKeyCompare
+
+	checkAKey:
+	cp $1C
+	jr nz, checkWKey
+	ld c, %00000100
+	ld b, %11111011
+	jr endKeyCompare
+
+	checkWKey:
+	cp $1D
+	jr nz, checkQKey
+	ld c, %00001000
+	ld b, %11110111
+	jr endKeyCompare
+
+	checkQKey:
+	cp $15
+	jr nz, checkSpaceKey
+	ld c, %00010000
+	ld b, %11101111
+	jr endKeyCompare
+
+	checkSpaceKey:
+	cp $29
+	jr nz, checkEnterKey
+	ld c, %00100000
+	ld b, %11011111
+	jr endKeyCompare
+
+	checkEnterKey:
+	cp $5A
+	jr nz, checkEscKey
+	ld c, %01000000
+	ld b, %10111111
+	jr endKeyCompare
+
+	checkEscKey:
+	cp $76
+	ret nz
+	ld c, %10000000
+	ld b, %01111111
+	jr endKeyCompare
+
+	endKeyCompare:
+	ld a, d
+	cp 0
+	jr z, DoKeypress
+	jr undoKeypress
+	DoKeypress:
+	ld hl, keyPressByteLocation
+	ld a, (hl)
+	or c
+	ld (hl), a
+	ret
+
+	undoKeypress:
+	ld hl, keyPressByteLocation
+	ld a, (hl)
+	and b
+	ld (hl), a
+
+
+ret
+
+;if there is a character, return it. Otherwise go on
+;this variation preserves the $F0 scancode 
+;looks like if a = 0 if device was not ready or did not have data ready
+;if d = 1 it's an unpress. Otherwise, it's a press down
 checkChar:
+	ld d, 0
+	CheckCharFirstRun:
 	ld hl, $A005			;8042 status port
 	ld a, (hl)
 	and %00000001			;read the data register read ready bit
 	cp 1
-	jr z, returnSomethingElse 					;if it's not ready just return fuck it
-	returnLastChar:
-		ld hl, $2005
-		ld a, (hl)
-		;ld a, 0
-		ret
-	returnSomethingElse:
+	ret nz 					;if it's not ready just return fuck it
 	;wait for keyboard to be ready
-	;call kbd8042WaitReadReady
-	ld hl, $2005
-	ld a, (hl)
-	cp $F0
-	jr z, checkCharGTFO
-	jr checkCharContinue
+	;put wait ready here unless I forget
+	;
 
-	checkCharGTFO:
-		;i dont care what this is i'm just loading it to a to discard it from the keyboard controller
-		ld hl, $A004
-		ld a, (hl)
-		
-		ld hl, $2005
-		ld a, 0
-		ld (hl), a
-		ret
-	checkCharContinue:
 	;if the controller said there was input data ready, read it
 	ld hl, $A004
 	ld a, (hl)
 	;store the last typed scancode into this location in ram for safe keeping
 	ld hl, $2005
 	ld (hl), a
+	cp $F0
+	ret nz
+	;cp $E0
+	;jr z, getRidOFE0Key
+	call kbd8042WaitReadReady
+	ld d, 1
+	;if the controller said there was input data ready, read it
+	ld hl, $A004
+	ld a, (hl)
+	;store the last typed scancode into this location in ram for safe keeping
+	ld hl, $2005
+	ld (hl), a
+	ret
+
+	;getRidOFE0Key:
+	;ld hl, $A004
+	;ld a, (hl)
+	;cp $F0
+	;jr z, TwoMoreFuckshits
+	;ret
+
+	;TwoMoreFuckshits:
+	;call kbd8042WaitReadReady
+	;ld hl, $A004
+	;ld a, (hl)
+
 
 ret
 
@@ -1701,84 +1799,6 @@ softwareSpriteToVram:
 
 ret
 
-;	$2007: screen pos x offset for g4 software sprite function
-;	#2008: screen pos y offset for g4 software sprite function
-softwareSpriteToVramCompressed:
-
-	ld d, 64
-	ld e, 0
-	;ld hl, letters_00
-	softwareSpriteCompressedCopyLoopY:
-	softwareSpriteCompressedCopyLoopX:
-		;base address of vram
-		ld a, 14
-		push de
-		ld d, 0
-		push hl
-		call VdpWriteToStandardRegister
-		pop hl
-		pop de
-		;ld c, $21
-		;ld a, d
-		push de
-		push hl
-		push bc
-		ld hl, $2007
-		ld a, (hl)
-		add e
-		ld e, a
-		ld hl, $2008
-		ld bc, $0000
-		ld c, (hl)
-		ld a, c
-		sla c
-		sla c
-		sla c
-		sla c
-		sla c
-		sla c
-		sla c
-		and %11111110
-		ld b, a
-		ex de, hl
-		add hl, bc
-		ex de, hl
-		pop bc
-		out (c), e
-		;ld a, e
-		out (c), d
-		pop hl
-		pop de
-
-		;ld hl, letters_0
-		;ld a, (hl)
-
-		call rotateAndMunge
-
-
-		writeByteCompressed:
-			ld b, $A0
-			ld c, $20
-			out (c), a
-			inc e
-			;inc hl
-			ld a, e
-			and %01111111
-			cp 4
-			jr nz, softwareSpriteCompressedCopyLoopX
-			inc hl
-			ld a, e
-			and %10000000
-			ld e, a
-			ex de, hl
-			ld bc, 128
-			add hl, bc
-			ex de, hl
-			ld a, d
-			cp 68
-			jr nz, softwareSpriteCompressedCopyLoopY
-
-ret
 
 rotateAndMunge:
 
@@ -1889,90 +1909,26 @@ updateScore:
 
 	ld hl, $96C4
 	ld a, (hl)
-	call figureOutWhatCharToUse
+	call G4PrintChar
+	;call figureOutWhatCharToUse
 
 	ld hl, $2007
 	ld a, 28
 	ld (hl), a
 	ld hl, $96C5
 	ld a, (hl)
-	call figureOutWhatCharToUse
+	call G4PrintChar
+	;call figureOutWhatCharToUse
 
 	ld hl, $2007
 	ld a, 32
 	ld (hl), a
 	ld hl, $96C6
 	ld a, (hl)
-	call figureOutWhatCharToUse
+	call G4PrintChar
+	;call figureOutWhatCharToUse
 
 
-ret
-
-figureOutWhatCharToUse:
-
-	cp 48
-	jr z, figureOutWhatCharToUse0
-	cp 49
-	jr z, figureOutWhatCharToUse1
-	cp 50
-	jr z, figureOutWhatCharToUse2
-	cp 51
-	jr z, figureOutWhatCharToUse3
-	cp 52
-	jr z, figureOutWhatCharToUse4
-	cp 53
-	jr z, figureOutWhatCharToUse5
-	cp 54
-	jr z, figureOutWhatCharToUse6
-	cp 55
-	jr z, figureOutWhatCharToUse7
-	cp 56
-	jr z, figureOutWhatCharToUse8
-	jr figureOutWhatCharToUse9
-
-	figureOutWhatCharToUse0:
-		;ld hl, letters_00
-		ld hl, letters_0
-		jr figureOutWhatCharToUseEnd
-	figureOutWhatCharToUse1:
-		;ld hl, letters_10
-		ld hl, letters_1
-		jr figureOutWhatCharToUseEnd
-	figureOutWhatCharToUse2:
-		;ld hl, letters_20
-		ld hl, letters_2
-		jr figureOutWhatCharToUseEnd
-	figureOutWhatCharToUse3:
-		;ld hl, letters_30
-		ld hl, letters_3
-		jr figureOutWhatCharToUseEnd
-	figureOutWhatCharToUse4:
-		;ld hl, letters_40
-		ld hl, letters_4
-		jr figureOutWhatCharToUseEnd
-	figureOutWhatCharToUse5:
-		;ld hl, letters_50
-		ld hl, letters_5
-		jr figureOutWhatCharToUseEnd
-	figureOutWhatCharToUse6:
-		;ld hl, letters_60
-		ld hl, letters_6
-		jr figureOutWhatCharToUseEnd
-	figureOutWhatCharToUse7:
-		;ld hl, letters_70
-		ld hl, letters_7
-		jr figureOutWhatCharToUseEnd
-	figureOutWhatCharToUse8:
-		;ld hl, letters_80
-		ld hl, letters_8
-		jr figureOutWhatCharToUseEnd
-	figureOutWhatCharToUse9:
-		ld hl, letters_9
-		;ld hl, letters_90
-
-	figureOutWhatCharToUseEnd:
-		;call softwareSpriteToVram
-		call softwareSpriteToVramCompressed
 ret
 
 ;c needs to contain the value of whatever you want to print as decimal
@@ -2022,28 +1978,6 @@ CDivD:
          inc c
          sub d
        djnz $-8
-ret
-
-DE_Times_A:
-;Inputs:
-;     DE and A are factors
-;Outputs:
-;     A is not changed
-;     B is 0
-;     C is not changed
-;     DE is not changed
-;     HL is the product
-;Time:
-;     342+6x
-;
-     ld b,8          ;7           7
-     ld hl,0         ;10         10
-       add hl,hl     ;11*8       88
-       rlca          ;4*8        32
-       jr nc,$+3     ;(12|18)*8  96+6x
-         add hl,de   ;--         --
-       djnz $-5      ;13*7+8     99
-
 ret
 
 exitmessage: db "Thank you for playing Potato Man",0
@@ -2138,105 +2072,8 @@ playerLife_06: db $0C, $C0, $0C, $C0
 playerLife_07: db $CC, $00, $0C, $C0
 
 
-;sprites for numbers
-letters_00: db $0F, $FF, $00, $00
-letters_01: db $F0, $00, $F0, $00
-letters_02: db $FF, $00, $F0, $00
-letters_03: db $F0, $F0, $F0, $00
-letters_04: db $F0, $0F, $F0, $00
-letters_05: db $F0, $00, $F0, $00
-letters_06: db $0F, $FF, $00, $00
-letters_07: db $00, $00, $00, $00
-
-letters_10: db $0F, $F0, $00, $00
-letters_11: db $FF, $F0, $00, $00
-letters_12: db $00, $F0, $00, $00
-letters_13: db $00, $F0, $00, $00
-letters_14: db $00, $F0, $00, $00
-letters_15: db $00, $F0, $00, $00
-letters_16: db $FF, $FF, $F0, $00
-letters_17: db $00, $00, $00, $00
-
-letters_20: db $FF, $FF, $00, $00
-letters_21: db $F0, $00, $F0, $00
-letters_22: db $00, $00, $F0, $00
-letters_23: db $0F, $FF, $F0, $00
-letters_24: db $F0, $00, $00, $00
-letters_25: db $F0, $00, $00, $00
-letters_26: db $FF, $FF, $F0, $00
-letters_27: db $00, $00, $00, $00
-letters_2: db %11110000, %10001000, %00001000, %01111000, %10000000, %10000000, %11111000, %00000000
-
-letters_30: db $FF, $FF, $F0, $00
-letters_31: db $F0, $00, $F0, $00
-letters_32: db $00, $00, $F0, $00
-letters_33: db $0F, $FF, $F0, $00
-letters_34: db $00, $00, $F0, $00
-letters_35: db $F0, $00, $F0, $00
-letters_36: db $FF, $FF, $F0, $00
-letters_37: db $00, $00, $00, $00
-letters_3: db %11111000, %10001000, %00001000, %01111000, %00001000, %10001000, %11111000, %00000000
-
-letters_40: db $00, $FF, $00, $00
-letters_41: db $0F, $0F, $00, $00
-letters_42: db $F0, $0F, $00, $00
-letters_43: db $FF, $FF, $F0, $00
-letters_44: db $00, $0F, $00, $00
-letters_45: db $00, $0F, $00, $00
-letters_46: db $00, $0F, $00, $00
-letters_47: db $00, $00, $00, $00
-letters_4: db %00110000, %01010000, %10010000, %11111000, %00010000, %00010000, %00010000, %00000000
-
-letters_50: db $FF, $FF, $F0, $00
-letters_51: db $F0, $00, $00, $00
-letters_52: db $F0, $00, $00, $00
-letters_53: db $FF, $FF, $00, $00
-letters_54: db $00, $00, $F0, $00
-letters_55: db $00, $00, $F0, $00
-letters_56: db $FF, $FF, $00, $00
-letters_57: db $00, $00, $00, $00
-letters_5: db %11111000, %10000000, %10000000, %11110000, %00001000, %00001000, %11110000, %00000000
-
-letters_60: db $0F, $FF, $00, $00
-letters_61: db $F0, $00, $F0, $00
-letters_62: db $F0, $00, $00, $00
-letters_63: db $FF, $FF, $00, $00
-letters_64: db $F0, $00, $F0, $00
-letters_65: db $F0, $00, $F0, $00
-letters_66: db $0F, $FF, $00, $00
-letters_67: db $00, $00, $00, $00
-letters_6: db %01110000, %10001000, %10000000, %11110000, %10001000, %10001000, %01110000, %00000000
-
-letters_70: db $FF, $FF, $F0, $00
-letters_71: db $00, $00, $F0, $00
-letters_72: db $00, $0F, $00, $00
-letters_73: db $00, $F0, $00, $00
-letters_74: db $00, $F0, $00, $00
-letters_75: db $00, $F0, $00, $00
-letters_76: db $00, $F0, $00, $00
-letters_77: db $00, $00, $00, $00
-letters_7: db %11111000, %00001000, %00010000, %00100000, %00100000, %00100000, %00100000, %00000000
-
-letters_80: db $0F, $FF, $00, $00
-letters_81: db $F0, $00, $F0, $00
-letters_82: db $F0, $00, $F0, $00
-letters_83: db $0F, $FF, $00, $00
-letters_84: db $F0, $00, $F0, $00
-letters_85: db $F0, $00, $F0, $00
-letters_86: db $0F, $FF, $00, $00
-letters_87: db $00, $00, $00, $00
-letters_8: db %01110000, %10001000, %10001000, %01110000, %10001000, %10001000, %01110000, %00000000
-
-letters_90: db $0F, $FF, $00, $00
-letters_91: db $F0, $00, $F0, $00
-letters_92: db $F0, $00, $F0, $00
-letters_93: db $0F, $FF, $F0, $00
-letters_94: db $00, $00, $F0, $00
-letters_95: db $00, $00, $F0, $00
-letters_96: db $0F, $FF, $00, $00
-letters_97: db $00, $00, $00, $00
-letters_9: db %01110000, %10001000, %10001000, %01111000, %00001000, %00001000, %01110000, %00000000
-
+;bruh wtf are these bottom 2 lines for?
+;	-03/11/2020
 letters_1: db %01100000, %11100000, %00100000, %00100000, %00100000, %00100000, %11111000, %00000000
 letters_0: db %01110000, %10001000, %11001000, %10101000, %10011000, %10001000, %01110000, %00000000
 spriteTerminate: db %00000000

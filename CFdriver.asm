@@ -836,10 +836,63 @@ readDataRegisterUntilFinished:
 
 ret
 
-;todo- make this into a multipurpose "hex to screen decimal" type function later
-;printBytesTransferred:
 ;whatever's in the de register gets printed to screen as a 5 digit decimal number
+;pro-tip: use 16bitDecimalToHl instead. It can be easily used for either g4 or text mode
 print16BitDecimal:
+
+	call b16bitDecimalToHl
+	call VPrintString
+	;ld hl, CFbytescopied
+	;call VPrintString
+
+ret
+
+;pretty sure this is the one that doesn't work
+;prints the low 2 digits of an 8 bit decimal ignoring the highest digit
+print2DigitDecimal:
+
+	call b2DigitDecimalToHl
+	call VPrintString
+
+ret
+
+;c needs to contain the value of whatever you want to print as decimal
+print8bitDecimal:
+	
+	call b8bitDecimalToHl
+	call VPrintString
+
+ret
+
+;prints the low 2 digits of an 8 bit decimal ignoring the highest digit
+;c needs to contain the number (in hex) that you want to convert
+b2DigitDecimalToHl:
+
+	ld d, 10
+	call CDivD
+	add 48
+	ld hl, $96C5
+	ld (hl), a
+
+	call CDivD
+	add 48
+	ld hl, $96C4
+	ld (hl), a
+
+	ld hl, $96C6
+	ld a, 0
+	ld (hl), a
+
+	ld hl, $96C4
+
+ret
+
+;whatever's in the de register gets put into ram as decimal and then a pointer of the ntca gets put into hl
+;usage example:
+;				call 16bitDecimalToHl
+;				call VPrintString
+b16bitDecimalToHl:
+
 	;ld hl, $96E7
 	;ld a, (hl)
 	;ld e, a
@@ -892,39 +945,12 @@ print16BitDecimal:
 	ld (hl),a
 
 	ld hl, $96E0
-	call VPrintString
-	;ld hl, CFbytescopied
-	;call VPrintString
 
 ret
 
-;pretty sure this is the one that doesn't work
-;prints the low 2 digits of an 8 bit decimal ignoring the highest digit
-print2DigitDecimal:
+;c needs to contain the value (in hex) of whatever you want to print as decimal
+b8bitDecimalToHl:
 
-	ld d, 10
-	call CDivD
-	add 48
-	ld hl, $96C5
-	ld (hl), a
-
-	call CDivD
-	add 48
-	ld hl, $96C4
-	ld (hl), a
-
-	ld hl, $96C6
-	ld a, 0
-	ld (hl), a
-
-	ld hl, $96C4
-	call VPrintString
-
-ret
-
-;c needs to contain the value of whatever you want to print as decimal
-print8bitDecimal:
-	
 	ld d, 10
 	call CDivD
 	add 48
@@ -945,8 +971,8 @@ print8bitDecimal:
 	ld a, 0
 	ld (hl), a
 
-	ld hl, $90C4
-	call VPrintString
+	;note to self: pretty sure this part is a bug and should be $96C4 instead. I gotta test it first a little though
+	ld hl, $96C4
 
 ret
 

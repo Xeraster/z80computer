@@ -282,6 +282,24 @@ parseCliInput:
 	cp c
 	jp z, parseCliInputHelp
 
+	;check if the input is the sysinfo command
+	ld hl, $2010
+	ld de, sysinfocmd
+	ld b, 7
+	call areStringsEqual
+	ld a, 1
+	cp c
+	jp z, parseCliInputSysinfo
+
+	;check if the input is the sysinfo command
+	ld hl, $2010
+	ld de, randomcmd
+	ld b, 6
+	call areStringsEqual
+	ld a, 1
+	cp c
+	jp z, parseCliInputRandom
+
 	;check if the input is the get key
 	ld hl, $2010
 	ld de, getKeyCommandText
@@ -313,10 +331,10 @@ parseCliInput:
 		jp parseCliInputExit
 	parseCliInputTestVideo:
 		call initializeVideo
-		jr parseCliInputExit
+		jp parseCliInputExit
 	parseCliInputVdpStatus:
 		call VdpStatusManualCommand
-		jr parseCliInputExit
+		jp parseCliInputExit
 	parseCliInputvdpregset:
 		call VdpManualSetCommand
 		jr parseCliInputExit
@@ -385,6 +403,12 @@ parseCliInput:
 		jr parseCliInputExit
 	parseCliInputHelp:
 		call helpCommand
+		jr parseCliInputExit
+	parseCliInputSysinfo:
+		call sysinfoCommand
+		jr parseCliInputExit
+	parseCliInputRandom:
+		call randomCommand
 		jr parseCliInputExit
 	parseCliInputInvalidCommand:
 		call invalidCommand
@@ -1206,6 +1230,10 @@ helpCommand:
 	call VPrintString
 
 	call VdpInsertEnter
+	ld hl, sysinfocmd
+	call VPrintString
+
+	call VdpInsertEnter
 	ld hl, printtimecmd
 	call VPrintString
 
@@ -1502,6 +1530,73 @@ genericTest1Command:
 
 ret
 
+sysinfoCommand:
+	call VdpInsertEnter
+	ld hl, kernelVersionString
+	call VPrintString
+	call sysIdentify
+	ld d, b
+	ld e, c
+	call print16BitDecimal
+
+	call VdpInsertEnter
+	ld hl, cfPresence
+	call VPrintString
+	call sysIdentify
+	ld a, e
+	and %00000001
+	cp 0
+	jr z, sysinfoCFnotPresent
+	ld hl, genericTrue
+	call VPrintString
+	jr sysinfoCFnotPresentExit
+
+	sysinfoCFnotPresent:
+	ld hl, genericFalse
+	call VPrintString
+
+	sysinfoCFnotPresentExit:
+	call VdpInsertEnter
+
+	ld hl, cfMounted
+	call VPrintString
+	call sysIdentify
+
+	ld a, e
+	and %00000010
+	cp 2
+
+	jr nz, sysinfoCFnotMounted
+	ld hl, genericTrue
+	call VPrintString
+	jr sysinfoCFnotMountedExit
+
+	sysinfoCFnotMounted:
+	ld hl, genericFalse
+	call VPrintString
+
+	sysinfoCFnotMountedExit:
+	call VdpInsertEnter
+	ld hl, madeBy
+	call VPrintString
+	call sysIdentify
+	call VPrintString
+
+
+ret
+
+randomCommand:
+	
+	call VdpInsertEnter
+	ld hl, randomSeedTip
+	call VPrintString
+	call VdpInsertEnter
+	call randomNumber
+	ld c, a
+	call print8bitDecimal
+
+ret
+
 cfstatusequals: db "CF card #0 status = ",0
 cferrorequals: db "CF card #0 error = ",0
 time: db "time= ",0
@@ -1534,6 +1629,7 @@ helpcmd: db "help",0
 test1cmd: db "test1",0
 togglevmodecmd: db "togglevmode",0
 changecolorcmd: db "changecolor",0
+sysinfocmd: db "sysinfo",0
 genericok: db "OK",0
 ntscmsg: db "video mode is ntsc",0
 palmsg: db "video mode is pal",0
@@ -1545,9 +1641,17 @@ callcmd: db "call ",0
 runcmd: db "run ",0
 cfresetcmd: db "cfreset",0
 testaddcmd: db "testadd",0
+randomcmd: db "random",0
 bit16multstring: db "16 bit mult =",0
 eightbithexformat: db " [NN(h)]",0
 availableCommands: db "Available commands:",0
 fontLoaded: db "fonts loaded",0
 directoryNotFound: db "Directory not found",0
+kernelVersionString: db "Kernel version: ",0
+cfPresence: db "CF card present: ",0
+cfMounted: db "CF card mounted: ",0
+madeBy: db "Programmed by: ",0
+genericTrue: db "true",0
+genericFalse: db "false",0
+randomSeedTip: db "Note: seed is at $9279-$927A",0
 runDotDotError: db "you can",$27,"t run the parent directory as an executable file, dumbass.",0

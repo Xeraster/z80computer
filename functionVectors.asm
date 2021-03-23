@@ -154,3 +154,50 @@ ret
 ;$B090
 call G4PrintString
 ret
+
+;$B094
+call HL_Div_C
+ret
+
+;$B098
+call b16bitDecimalToHl
+ret
+
+;$B09C
+call b8bitDecimalToHl
+ret
+
+;$B0A0
+call b2DigitDecimalToHl
+ret
+
+;$B0A4
+call fillRangeInRam
+ret
+
+;$B0A8
+;copies whatever's at the address in hl to whatever address is in de
+;modifies a
+;preserves hl and de
+call addressToOtherAddress
+ret
+
+;$B0AC
+call DE_Times_A
+ret
+
+;$B0B0
+call changeSpriteSettings
+ret
+
+;$B0B4
+call randomNumber
+ret
+
+;$B0B8
+call sysIdentify
+ret
+
+;$B0BC
+call aToScreenHex
+ret

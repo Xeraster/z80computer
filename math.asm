@@ -1,3 +1,5 @@
+randData: equ $9279
+
 print1st32bitNum:
 
 	ld hl, $96A3
@@ -599,3 +601,22 @@ mul32_add:
   adc hl,bc
   adc a,0
   jp mul32_final
+
+  ;-----> Generate a random number
+; output a=answer 0<=a<=255
+; all registers are preserved except: af
+; $9279 (randData) = random seed (programmer gets to/has to put a 16 bit random seed here)
+randomNumber:
+        push    hl
+        push    de
+        ld      hl,(randData)
+        ld      a,r
+        ld      d,a
+        ld      e,(hl)
+        add     hl,de
+        add     a,l
+        xor     h
+        ld      (randData),hl
+        pop     de
+        pop     hl
+ret

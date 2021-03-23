@@ -1,6 +1,5 @@
 ;http://www.brokenthorn.com/Resources/OSDevScanCodes.html
 ;link to the only good page on the internet about keyboard scancodes
-
 ;MEMORY MAP:
 ;	rom: 0h-1FFFh
 ;	ram: 2000h-9FFFh
@@ -51,6 +50,7 @@
 ;$2FFE - used for draw rectangle filled function
 ;
 ;$927B ; where 8 bits of instantaneous keyboard keys are stored for games
+;$9279-$927A = random seed location
 di
 ld sp, $9FFF		;set the stack pointer to the top of the ram
 ld hl, $9EFA
@@ -59,10 +59,18 @@ ld (hl), a
 inc hl
 ld (hl), a
 
+;if this = F4, sysIdentify will know that no drive is mounted
+ld hl, $96DD
+ld a, $F4
+ld (hl), a
+
 ;fill the 40 character keyboard input store-er with null characters
 ld hl, $2010
 ld c, 80
 call clearRangeInRam
+
+;set the $2005 and $2009 variables to zero
+call initializeVariables
 
 ;set lcd to 8 bit 2 line mode
 call waitForLcdReady
@@ -84,28 +92,67 @@ call waitForLcdReady
 ld hl, $A000
 ld (hl), %10000000
 
-ld a, "!"
-call printChar
+call initializeVideo
 
+ld a, $69
+call aToScreenHex
+
+call kbd8042WaitWriteReady
+ld hl, $A005
+ld a, $20
+ld (hl), a
+
+call delayForaWhile
+ld hl, $A004
+ld a, (hl)
+call aToScreenHex
+
+call kbd8042WaitWriteReady
+ld hl, $A005
+ld a, %00100100					;set the controller configuration byte and be sure to enable port 1 clock
+ld (hl), a
+
+call kbd8042WaitWriteReady
+ld hl, $A005
+ld a, $20
+ld (hl), a
+
+ld hl, $A005
+ld a, (hl)
+call aToScreenHex
+
+
+call delayForaWhile				;do a small delay to allow the 8042 time to recover from being reset
+;ld a, "k"
+;call VdpPrintChar
+;read the 8042
+;not working for some fucking reason
+call initializeKeyboard
 
 ;send command to enable battery powered rtc and 24 hour time format
 ld hl, $A01E
 ld a, %00000110
 ld (hl), a
 
-;set the $2005 and $2009 variables to zero
-call initializeVariables
+ld hl, randomString1
+call printString
 
-call delayForaWhile				;do a small delay to allow the 8042 time to recover from being reset
-;read the 8042
-call initializeKeyboard
-
-call initializeVideo
 ld hl, welcomemsg
 call VPrintString
 call VdpInsertEnter
 
+ld hl, welcometip
+call VPrintString
+call VdpInsertEnter
+
+ld hl, randomString2
+call printString
+
+;if cf card inserted, set up registers to be ready when user types the mount command (currently fsinfo)
 call driveInit
+
+ld hl, welcomemsg
+call printString
 
 ;attempt to write contents of rtc to screen and do it over and over and over again
 getTime:
@@ -448,6 +495,20 @@ J62:
     JP NZ,J60
 ret
 
+;imported for compatibility with stuff I just copy pasted from games. I'm too lazy to code it out of existence right now
+reallySmallDelay:
+	push af
+	push de
+	ld e, $0F
+	reallySmallDelayLoop:
+		dec e
+		ld a, e
+		cp 0
+		jr nz, reallySmallDelayLoop
+	pop de
+	pop af
+ret
+
 rotateARight:
 	DoTheRotation:
 		dec d
@@ -551,8 +612,8 @@ ld (hl), a
 ld hl, $2009
 ld (hl), a
 
-ld hl, $9EFF
-ld (hl), 0
+;ld hl, $9EFF
+;ld (hl), 0
 ret
 
 discardUnpressScanCode:
@@ -639,17 +700,26 @@ ret
 
 ;run this function to set up the keyboard controller and any connected devices
 initializeKeyboard:
-	call kbd8042WaitWriteReady
-	;call delayForaWhile
-	ld hl, $A005
-	ld a, $AD
-	ld (hl), a 						;disable devices. There is not going to be a mouse port so I wont use also use A7 to disable that
+	;call kbd8042WaitWriteReady
+	;ld hl, $A005
+	;ld a, $AD
+	;ld (hl), a 						;disable devices. Command $AD disables the keyboard port
+
+	call delayForaWhile
+
+	ld a, "1"
+	call printChar
 
 	ld hl, $A004
 	ld a, (hl)						;flush output buffer by just reading from the data output port. It doesn't matter what it was since the chip just turned on and it's just going to be garbage anyway
 
+	ld a, "2"
+	call printChar
+
 	call delayForaWhile
 	call kbd8042WaitWriteReady		;send the command to set the controller configuration byte
+
+
 	;call delayForaWhile
 	ld hl, $A005
 	ld a, $60
@@ -657,42 +727,64 @@ initializeKeyboard:
 
 	call delayForaWhile
 	call kbd8042WaitWriteReady		;once that's finished, actually send the configuration byte
+	;ld a, "3"
+	;call printChar
 	;call delayForaWhile
+	ld hl, $A005
 	ld a, %00100100					;set the controller configuration byte and be sure to enable port 1 clock
 	ld (hl), a
 
 	;perform a controller self-test
 	call kbd8042WaitWriteReady
+	ld a, "4"
+	call printChar
 	;call delayForaWhile
+	ld hl, $A005
 	ld a, $AA 						;the self test command
 	ld (hl), a
 	;call delayForaWhile
 	call kbd8042WaitReadReady
-	ld hl, $A004
-	ld a, (hl)						;read the results of the self test. if it prints to the screen as "55", it worked correctly
+	ld a, "5"
+	call printChar
 	ld hl, kbdtype
 	call VPrintString
+
+	ld hl, $A004
+	ld a, (hl)						;read the results of the self test. if it prints to the screen as "55", it worked correctly
 	call aToScreenHex
 
 	;perform a ps/2 device test
+	ld a, "6"
+	call printChar
+
 	call kbd8042WaitWriteReady
+	ld a, "7"
+	call printChar
 	ld hl, $A005
 	ld a, $AB						;the self test command
 	ld (hl), a
 	call kbd8042WaitReadReady
+	ld a, "8"
+	call printChar
 	ld hl, $A004
 	ld a, (hl) 						;read the results of the self test
 	call aToScreenHex 				;display self test byte to screen as hex
 
 	;enable 1st device
 	call kbd8042WaitWriteReady
+
+	ld a, "9"
+	call printChar
+
 	call delayForaWhile
 	ld hl, $A005
 	ld a, $AE 						;AE means enable
 	ld (hl), a
 
 	;see what happens afte enabling. Maybe this will help me find out why the keyboard doesnt work unless you reset it after powering on
-	call kbd8042WaitReadReady
+	;call kbd8042WaitWriteReady
+	ld a, "a"
+	call printChar
 	ld hl, $A004
 	ld a, (hl)
 	call aToScreenHex
@@ -995,6 +1087,40 @@ copyRamBlock:
 
 ret
 
+;system identification subroutine. Returns kernel info and whether or not a cf card is installed/mounted
+sysIdentify:
+	push hl
+		ld e, 0
+		;status bit goes into the a register
+		;bit 7 = reserved, bit 6 = reserved, bit 5 = reserved, bit 4 = reserved, ;bit 3 = reserved, bit 2 = reserved, ;bit 1 = cf card mounted, bit 0 = cf card present
+		call getCFStatus
+		cp $50
+		jr z, cardIsPresent
+		jr cardPresentEndCompare
+
+		cardIsPresent:
+		ld a, e
+		or %00000001
+		ld e, a
+		cardPresentEndCompare:
+
+		ld hl, $96DD
+		ld a, (hl)
+		cp $F4
+		jr nz, cardMounted
+		jr cardnotMountedEndCompare
+
+		cardMounted:
+		ld a, e
+		or %00000010
+		ld e, a
+		cardnotMountedEndCompare:
+	pop hl
+	ld hl, credits
+	ld bc, kernelVersion
+
+ret
+
 include '9958driver.asm'
 include 'commands.asm'
 
@@ -1005,7 +1131,15 @@ ready: db "ready",0
 controlPort: db "ctrl port= ",0
 kbdtype: db "kbstatus:",0
 welcomemsg: db "System ready",0
+welcometip: db "Type ",$22,"help",$22," to see a list of commands",0
 genericBytes: db "bytes",0
+randomString1: db "video init",0
+randomString2: db "rstr2",0
+;------------------------------------
+;this stuff is connected to the sysIdentify subroutine
+kernelVersion: equ $0001
+credits: db "Scott Newman",0
+;-----------------------------------
 
 ;here is my scancode to ascii table.
 ;I know, I know, someone call an exorcist

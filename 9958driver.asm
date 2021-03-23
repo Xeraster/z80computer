@@ -1118,6 +1118,104 @@ G4PrintString:
 
 ret
 
+;This subroutine is in basically every game I make so I'm just gonna slap it on in here
+;It's not the fastest way to do what it does but is it the easiest
+;modifies sprites in G4 mode
+;
+;a = sprite entry you want to change 
+;d=x position to change the sprite to
+;e=y position to change the sprite to
+;l=sprite number to change sprite appearance to
+changeSpriteSettings:
+push hl
+push de
+
+	ld d, 0
+	ld e, a
+	ld a, 4
+	call DE_Times_A
+	ex de, hl
+	ld hl, $96A0
+	ld (hl), e
+	inc hl
+	ld (hl), d
+	inc hl
+	ld a, 0
+	ld (hl), a
+	inc hl
+	ld (hl), a
+
+	;the commentted out block is slower
+	;--------------------------------------------------------------------------
+	;4* sprite entry
+	;ld hl, $96A0
+	;ld (hl), a
+	;inc hl
+	;ld a, 0
+	;ld (hl), a
+	;inc hl
+	;ld a, 4
+	;ld (hl), a
+	;inc hl
+	;ld a, 0
+	;ld (hl), a
+
+	;call load16bitvaluesFromRam
+	;call mul16
+	;call loadmul16IntoRam
+	;call putResultInParameter1
+	;--------------------------------------------------------------------------
+
+	;now copy the starting address of the sprite attributes table into math parameter 2
+	ld hl, $96A4
+	ld a, 0		;bits 7-0 of the sprite attribute table start
+	ld (hl), a
+	inc hl
+	ld a, %01110110 	;bits 15-8 of sprite attribute table start
+	ld (hl), a
+	inc hl
+	ld a, 0
+	ld (hl), a
+	inc hl
+	ld (hl), a
+
+	;add base sprite attribute address to 
+	call add32BitNumber
+
+
+	;draw each sprite on the screen in a quick and dirty way just so I can look at them
+	;copy the sprite info to the attribute table at $7000
+	ld a, 14
+	ld d, %00000001 	;bits a16, a15 and a14. is always going to stay unchanged for this purpose
+	call VdpWriteToStandardRegister
+	ld hl, $96A8
+	ld a, (hl)			;calculated value of bits 0-7
+	;ld a, %00000000 	;bits a0-a7
+	out (c), a
+	ld hl, $96A9
+	ld a, (hl)
+	or %01000000
+	res 7, a 			;should be in the correct configuration now
+	;ld a, %01110110 	;bits a8-a13. bit 6 is r/w. bit 7 should stay zero
+	out (c), a
+
+pop de
+pop hl
+	;get ready to start writing to port 0 - the vram access port
+	ld b, $A0
+	ld c, $20
+
+	out (c), e
+	call reallySmallDelay
+	out (c), d
+	call reallySmallDelay
+	out (c), l
+	call reallySmallDelay
+	ld a, 0
+	out (c), a
+
+ret
+
 ;	$2007: screen pos x offset for g4 software sprite function
 ;	#2008: screen pos y offset for g4 software sprite function
 ;used for copying text 1 fonts to the screen when in g4 mode
